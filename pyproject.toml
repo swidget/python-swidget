@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "python-swidget"
-version = "0.0.3"
+version = "0.0.4"
 description = "Python API for Swidget smart devices"
 license = "GPL-3.0-or-later"
-authors = ["Michael Kehoe <michael.k.kehoe@gmail.com>", "Nathan Brown <nathan.brown@swidget.com"]
+authors = ["Swidget"]
 repository = "https://github.com/swidget/python-swidget"
 readme = "README.md"
 packages = [
