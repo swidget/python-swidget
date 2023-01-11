@@ -24,19 +24,21 @@ class DeviceType(Enum):
 
 
 class SwidgetDevice:
-    def __init__(self, host, secret_key, ssl=False, use_websockets=True):
+    def __init__(self, host, token_name, secret_key, ssl=False, use_websockets=True):
+        self.token_name = token_name
         self.ip_address = host
         self.ssl = ssl
         self.secret_key = secret_key
         self.use_websockets = use_websockets
         self.device_type = DeviceType.Unknown
-        headers = {"x-secret-key": self.secret_key}
+        headers = {self.token_name: self.secret_key}
         connector = TCPConnector(force_close=True)
         self._session = ClientSession(headers=headers, connector=connector)
         self._last_update = None
         if self.use_websockets:
             self._websocket = SwidgetWebsocket(
                 host=self.ip_address,
+                token_name=self.token_name,
                 secret_key=self.secret_key,
                 callback=self.message_callback,
                 session=self._session)

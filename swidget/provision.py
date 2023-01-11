@@ -3,9 +3,9 @@ import time
 import requests
 
 
-def provision_wifi(ssid, network_password, secret_key):
+def provision_wifi(ssid, network_password, token_name, secret_key):
     payload = {"ssid": ssid, "password": network_password, "secretKey": secret_key}
-    headers = {'x-secret-key': secret_key}
+    headers = {token_name: secret_key}
     url = "https://10.123.45.1/network"
     initial_provision = requests.post(url, data=payload, verify=False).json()
     print(f"Response from setting {initial_provision}")

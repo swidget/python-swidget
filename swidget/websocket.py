@@ -27,6 +27,7 @@ class SwidgetWebsocket:
     def __init__(
         self,
         host,
+        token_name,
         secret_key,
         callback,
         session=None,
@@ -34,7 +35,7 @@ class SwidgetWebsocket:
     ):
 
         self.session = session or aiohttp.ClientSession()
-        self.uri = self._get_uri(host, secret_key)
+        self.uri = self._get_uri(host, token_name, secret_key)
         self.callback = callback
         self._ssl = False if verify_ssl is False else None
         self._state = None
@@ -52,9 +53,9 @@ class SwidgetWebsocket:
         self._state = value
 
     @staticmethod
-    def _get_uri(host, secret_key):
+    def _get_uri(host, token_name, secret_key):
         """Generate the websocket URI"""
-        return f"wss://{host}/api/v1/sock?x-secret-key={secret_key}"
+        return f"wss://{host}/api/v1/sock?{token_name}={secret_key}"
 
     async def running(self):
         """Open a persistent websocket connection and act on events."""
