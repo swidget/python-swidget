@@ -114,7 +114,7 @@ class SwidgetWebsocket:
                 await asyncio.sleep(5)
 
     async def send_str(self, message):
-        _LOGGER.error(f"Sending Message: {message}")
+        # _LOGGER.error(f"Sending Message: {message}")
         message = str(message)
         await self.ws_client.send_str(f'{message}')
 
