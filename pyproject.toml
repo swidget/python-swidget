@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "python-swidget"
-version = "0.0.4"
+version = "0.0.5"
 description = "Python API for Swidget smart devices"
 license = "GPL-3.0-or-later"
 authors = ["Swidget"]
@@ -16,7 +16,7 @@ swidget = "swidget.cli:cli"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-aiohttp = "3.8.3"
+aiohttp = ">=3.8.1"
 anyio = "*"  # see https://github.com/python-trio/asyncclick/issues/18
 importlib-metadata = "*"
 asyncclick = ">=8"
