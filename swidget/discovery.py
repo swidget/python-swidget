@@ -42,6 +42,7 @@ class SwidgetProtocol(ssdp.SimpleServiceDiscoveryProtocol):
 
 
 async def discover_devices(timeout=RESPONSE_SEC):
+    global devices
     loop = asyncio.get_event_loop()
     devices = dict()
     transport, protocol = await loop.create_datagram_endpoint(
