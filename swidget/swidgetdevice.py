@@ -93,7 +93,6 @@ class SwidgetDevice:
 
     async def process_state(self, state):
         """ Process any information about the state of the device or insert"""
-        _LOGGER.error("Processing state: %s", state)
         # State is not always in the state (during callback)
         try:
             self.rssi = state["connection"]["rssi"]
@@ -129,7 +128,6 @@ class SwidgetDevice:
                                "request_id": "command",
                                "payload": data
                                })
-            _LOGGER.debug("About to send data: %s", data)
             await self._websocket.send_str(data)
         else:
             async with self._session.post(

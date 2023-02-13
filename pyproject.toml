@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "python-swidget"
-version = "0.0.17"
+version = "0.0.25"
 description = "Python API for Swidget smart devices"
 license = "GPL-3.0-or-later"
 authors = ["Swidget"]
