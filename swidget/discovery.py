@@ -39,6 +39,10 @@ class SwidgetProtocol(ssdp.SimpleServiceDiscoveryProtocol):
             insert_type = headers["SERVER"].split(" ")[1].split("+")[1].split("/")[0]
             friendly_name = f"Swidget {device_type} w/{insert_type} insert"
             devices[mac_address] = SwidgetDiscoveredDevice(mac_address, ip_address, friendly_name)
+        print("RECV")
+        print(headers)
+        print(headers["ST"])
+        print(ip_address)
 
 
 async def discover_devices(timeout=RESPONSE_SEC):
@@ -61,7 +65,6 @@ async def discover_devices(timeout=RESPONSE_SEC):
     )
     search_request.sendto(transport, (SwidgetProtocol.MULTICAST_ADDRESS, 1900))
     await asyncio.sleep(timeout)
-    _LOGGER.debug(f"Found the following Swidget devices from SSDP discovery: {devices}")
     return devices
 
 

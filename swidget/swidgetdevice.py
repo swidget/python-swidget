@@ -228,7 +228,6 @@ class SwidgetDevice:
         try:
             return list(self.assemblies['host'].components['0'].functions.keys())
         except KeyError:
-            _LOGGER.debug("Host does not have feature information")
             return set()
 
     @property
@@ -237,7 +236,6 @@ class SwidgetDevice:
         try:
             return list(self.assemblies['insert'].components.keys())
         except KeyError:
-            _LOGGER.debug("Insert does not have feature information")
             return set()
 
     def get_function_values(self, function: str):

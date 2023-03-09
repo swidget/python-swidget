@@ -77,11 +77,9 @@ class SwidgetWebsocket:
                         await self.callback(msg)
 
                     elif message.type == aiohttp.WSMsgType.CLOSED:
-                        _LOGGER.error("AIOHTTP websocket connection closed")
                         break
 
                     elif message.type == aiohttp.WSMsgType.ERROR:
-                        _LOGGER.error(f"AIOHTTP websocket error. Message-type: {message.type} {message}")
                         break
 
 
@@ -101,7 +99,6 @@ class SwidgetWebsocket:
             elif self.state != STATE_STOPPED:
                 retry_delay = min(2 ** (self.failed_attempts - 1) * 30, 300)
                 self.failed_attempts += 1
-                _LOGGER.error(f"Websocket connection failed, retrying in {retry_delay}s: {error}")
                 self.state = STATE_DISCONNECTED
                 await asyncio.sleep(retry_delay)
         except Exception as error:  # pylint: disable=broad-except
@@ -116,7 +113,6 @@ class SwidgetWebsocket:
                 await asyncio.sleep(5)
 
     async def send_str(self, message):
-        # _LOGGER.error(f"Sending Message: {message}")
         message = str(message)
         await self.ws_client.send_str(f'{message}')
 
