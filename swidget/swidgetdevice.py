@@ -31,6 +31,7 @@ class SwidgetDevice:
         self.secret_key = secret_key
         self.use_websockets = use_websockets
         self.device_type = DeviceType.Unknown
+        self._friendly_name = "Unknown Swidget Device"
         headers = {self.token_name: self.secret_key}
         connector = TCPConnector(force_close=True)
         self._session = ClientSession(headers=headers, connector=connector)
@@ -45,7 +46,7 @@ class SwidgetDevice:
 
     def get_websocket(self):
         return self._websocket
-        
+
     def set_countdown_timer(self, minutes):
         raise NotImplementedError()
 
@@ -83,6 +84,19 @@ class SwidgetDevice:
         self.id = self.assemblies['host'].id
         self._last_update = int(time.time())
 
+    async def get_friendly_name(self):
+        try:
+            async with self._session.get(
+                url=f"https://{self.ip_address}/api/v1/name", ssl=self.ssl
+            ) as response:
+                name = await response.json()
+        except Exception:
+            name = {"name": f"Swidget {self.device_type} w/{self.insert_type} insert"}
+        await self.process_friendly_name(name['name'])
+
+    async def process_friendly_name(self, name):
+        self._friendly_name = name
+
     async def get_state(self):
         """ Get the state of the device over HTTP"""
         async with self._session.get(
@@ -112,6 +126,7 @@ class SwidgetDevice:
             _LOGGER.debug("Performing the initial update to obtain sysinfo")
         await self.get_summary()
         await self.get_state()
+        await self.get_friendly_name()
 
     async def send_config(self, payload: dict):
         data = json.dumps({"type":"config","request_id":"abcd", "payload": payload})
@@ -282,10 +297,10 @@ class SwidgetDevice:
         """Return  True if the device is dimmable."""
         return False
 
-    @property
+    @property  # type: ignore
     def friendly_name(self) -> str:
         """Return a friendly description of the device"""
-        return f"Swidget {self.device_type} w/{self.insert_type} insert"
+        return self._friendly_name
 
     @property  # type: ignore
     def is_on(self) -> bool:

@@ -77,10 +77,18 @@ async def cli(ctx, host, password, debug, type):
         return
 
     if type is not None:
-        dev = TYPE_TO_CLASS[type](host, password, False, False)
+        dev = TYPE_TO_CLASS[type](host=host,
+                                  token_name='x-secret-key',
+                                  secret_key=password,
+                                  ssl=False,
+                                  use_websockets=False)
     else:
         click.echo("No --type defined, discovering..")
-        dev = await discover_single(host, password, False, False)
+        dev = await discover_single(host=host,
+                                    token_name='x-secret-key',
+                                    password=password,
+                                    ssl=False,
+                                    use_websockets=False)
 
     await dev.update()
     ctx.obj = dev
@@ -135,6 +143,7 @@ async def hwinfo(dev):
 async def state(dev: SwidgetDevice):
     """Print out device state and versions."""
     click.echo(click.style(f"== {dev.friendly_name} - {dev.model} ==", bold=True))
+    click.echo(f"\tFriendly Name:  {dev.friendly_name}")
     click.echo(f"\tHost: {dev.ip_address}")
     click.echo(
         click.style(

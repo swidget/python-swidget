@@ -43,23 +43,35 @@ async def cli(host, password, debug):
     headers = {"x-secret-key": password}
     connector = TCPConnector(force_close=True)
     _session = ClientSession(headers=headers, connector=connector)
+
+    # Get Summary Info
     async with _session.get(
             url=f"https://{host}/api/v1/summary", ssl=False,
         ) as response:
             summary = await response.json()
-
     click.echo(click.style("== Summary info ==", bold=True))
     click.echo(json.dumps(summary, sort_keys=True, indent=2))
     click.echo()
+
+    # Get State Info
     async with _session.get(
             url=f"https://{host}/api/v1/state", ssl=False
         ) as response:
             state = await response.json()
-
     click.echo(click.style("== State info ==", bold=True))
     click.echo(json.dumps(state, sort_keys=True, indent=2))
 
-    final = {"state": state, "summary": summary}
+
+    # Get Name Info
+    async with _session.get(
+            url=f"https://{host}/api/v1/name", ssl=False
+        ) as response:
+            name = await response.json()
+    click.echo(click.style("== Name ==", bold=True))
+    click.echo(json.dumps(name, sort_keys=True, indent=2))
+
+
+    final = {"state": state, "summary": summary, "name": name}
     save_to = f"{summary['model']}_{summary['version']}.json"
     save = click.prompt(f"Do you want to save the above content to {save_to} (y/n)")
     if save == "y":
