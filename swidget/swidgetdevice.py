@@ -176,7 +176,7 @@ class SwidgetDevice:
         """
         try:
             async with self._session.get(
-                url=f"https://{self.ip_address}/blink?x-user-key=dqMMBX9deuwtkkp784ewTjqo76IYfThV",
+                url=f"https://{self.ip_address}/blink",
                 ssl=self.ssl
             ) as response:
                 return response.text
