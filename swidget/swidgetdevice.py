@@ -50,7 +50,7 @@ class SwidgetDevice:
     def set_countdown_timer(self, minutes):
         raise NotImplementedError()
 
-    def stop(self):
+    async def stop(self):
         """Stop the websocket."""
         if self._websocket is not None:
             self._websocket.stop()
@@ -202,7 +202,7 @@ class SwidgetDevice:
             "rssi": self.rssi
         }
 
-    def get_child_consumption(self, plug_id=0):
+    async def get_child_consumption(self, plug_id=0):
         """Get the power consumption of a plug in watts."""
         if plug_id == "all":
             return_dict = {}
