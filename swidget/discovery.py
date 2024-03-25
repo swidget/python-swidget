@@ -39,10 +39,7 @@ class SwidgetProtocol(ssdp.SimpleServiceDiscoveryProtocol):
             insert_type = headers["SERVER"].split(" ")[1].split("+")[1].split("/")[0]
             friendly_name = headers["SERVER"].split("/")[2].strip('"')
             devices[mac_address] = SwidgetDiscoveredDevice(mac_address, ip_address, friendly_name)
-        print("RECV")
-        print(headers)
-        print(headers["ST"])
-        print(ip_address)
+            _LOGGER.debug(f"Swidget device '{friendly_name}' at {ip_address}")
 
 
 async def discover_devices(timeout=RESPONSE_SEC):
@@ -78,8 +75,10 @@ async def discover_single(host: str, token_name: str, password: str, ssl: bool, 
     swidget_device = SwidgetDevice(host, token_name, password, ssl, use_websockets)
     await swidget_device.get_summary()
     device_type = swidget_device.device_type
+    await swidget_device.stop()
+
     device_class = _get_device_class(device_type)
-    dev = device_class(host, token_name, password, False, use_websockets)
+    dev = device_class(host, token_name, password, ssl, use_websockets)
     await dev.update()
     return dev
 

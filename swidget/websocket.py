@@ -1,9 +1,9 @@
+import aiohttp
 import asyncio
-from datetime import datetime
 import logging
 import json
 
-import aiohttp
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,12 +66,11 @@ class SwidgetWebsocket:
             async with self.session.ws_connect(self.uri, headers=headers, verify_ssl=False, heartbeat=30) as self.ws_client:
                 self.state = STATE_CONNECTED
                 self.failed_attempts = 0
-                self.send_str(json.dumps({"type": "summary", "request_id": "1"}))
-                self.send_str(json.dumps({"type": "state", "request_id": "2"}))
+                await self.send_str(json.dumps({"type": "summary", "request_id": "1"}))
+                await self.send_str(json.dumps({"type": "state", "request_id": "2"}))
                 async for message in self.ws_client:
                     if self.state == STATE_STOPPED:
                         break
-
                     if message.type == aiohttp.WSMsgType.TEXT:
                         msg = message.json()
                         await self.callback(msg)
@@ -81,9 +80,6 @@ class SwidgetWebsocket:
 
                     elif message.type == aiohttp.WSMsgType.ERROR:
                         break
-
-
-
         except aiohttp.ClientResponseError as error:
             if error.code == 401:
                 _LOGGER.error(f"Credentials rejected: {error}")
@@ -109,7 +105,6 @@ class SwidgetWebsocket:
         else:
             if self.state != STATE_STOPPED:
                 self.state = STATE_DISCONNECTED
-
                 await asyncio.sleep(5)
 
     async def send_str(self, message):
@@ -122,7 +117,8 @@ class SwidgetWebsocket:
         while self.state != STATE_STOPPED:
             await self.running()
 
-    def close(self):
+    async def close(self):
         """Close the listening websocket."""
         self.state = STATE_STOPPED
-        self.ws_client.close()
+        if self.ws_client:
+            await self.ws_client.close()
