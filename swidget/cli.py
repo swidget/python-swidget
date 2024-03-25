@@ -1,4 +1,3 @@
-
 """python-swidget cli tool."""
 import asyncio
 import logging
@@ -88,10 +87,6 @@ async def cli(ctx, host, password, debug, type):
                                     ssl=False,
                                     use_websockets=False)
 
-#    ctx.obj = dev
-#    if ctx.invoked_subcommand is None:
-#        await ctx.invoke(state)
-#    # await  ctx.obj.stop()
     @asynccontextmanager
     async def async_wrapped_device(dev: SwidgetDevice):
         try:
