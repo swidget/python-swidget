@@ -15,6 +15,7 @@ from importlib_metadata import version  # type: ignore
 
 from swidget.discovery import discover_devices, discover_single, SwidgetDiscoveredDevice
 from swidget.exceptions import SwidgetException
+from swidget.provision import provision_wifi
 from swidget.swidgetdevice import DeviceType, SwidgetAssembly, SwidgetDevice, SwidgetComponent
 from swidget.swidgetdimmer import SwidgetDimmer
 from swidget.swidgetoutlet import SwidgetOutlet
@@ -28,6 +29,7 @@ __version__ = version("python-swidget")
 __all__ = [
     "discover_devices",
     "discover_single",
+    "provision_wifi"
     "SwidgetDiscoveredDevice",
     "SwidgetException",
     "DeviceType",

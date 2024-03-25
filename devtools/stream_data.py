@@ -24,11 +24,17 @@ async def cli(host, password, debug):
     headers = {"x-secret-key": password}
     connector = TCPConnector(force_close=True)
     _session = ClientSession(headers=headers, connector=connector)
-    websocket = SwidgetWebsocket(host=host, secret_key=password, session=_session, callback=print_message)
-    await websocket.listen()
+    websocket = SwidgetWebsocket(host=host, token_name='x-secret-key', secret_key=password, session=_session, callback=print_message)
+    try:
+        await websocket.listen()
+    except:
+        print("Error: Unable to connect to Swidget device")
+        await _session.close()
+
 
 async def print_message(message):
     print(json.dumps(message, sort_keys=True, indent=2))
+
 
 if __name__ == "__main__":
     cli()
