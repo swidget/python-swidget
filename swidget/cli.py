@@ -1,5 +1,4 @@
 """python-swidget cli tool."""
-import asyncio
 import logging
 import sys
 from pprint import pformat as pf
@@ -47,6 +46,10 @@ pass_dev = click.make_pass_decorator(SwidgetDevice)
     envvar="SWIDGET_DEBUG",
     default=False,
     is_flag=True)
+@click.option("--http_only",
+    envvar="SWIDGET_HTTP_ONLY",
+    default=True,
+    is_flag=True)
 @click.option(
     "--type",
     envvar="SWIDGET_TYPE",
@@ -55,7 +58,7 @@ pass_dev = click.make_pass_decorator(SwidgetDevice)
 )
 @click.version_option(package_name="python-swidget")
 @click.pass_context
-async def cli(ctx, host, password, debug, type):
+async def cli(ctx, host, password, debug, http_only, type):
     """A tool for controlling Swidget smart home devices."""  # noqa
     # no need to perform any checks if we are just displaying the help
     if sys.argv[-1] == "--help":
@@ -68,7 +71,6 @@ async def cli(ctx, host, password, debug, type):
 
     if ctx.invoked_subcommand == "discover" or ctx.invoked_subcommand == "wifi":
         return
-
     if host is None:
         click.echo("No host name given, trying discovery..")
         await ctx.invoke(discover)
@@ -77,15 +79,16 @@ async def cli(ctx, host, password, debug, type):
         dev = TYPE_TO_CLASS[type](host=host,
                                   token_name='x-secret-key',
                                   secret_key=password,
-                                  ssl=False,
+                                  use_https=http_only,
                                   use_websockets=False)
     else:
         click.echo("No --type defined, discovering...")
         dev = await discover_single(host=host,
                                     token_name='x-secret-key',
                                     password=password,
-                                    ssl=False,
+                                    use_https=http_only,
                                     use_websockets=False)
+        await dev.update()
 
     @asynccontextmanager
     async def async_wrapped_device(dev: SwidgetDevice):
@@ -104,7 +107,7 @@ async def cli(ctx, host, password, debug, type):
 def wifi():
     """Commands to control wifi settings."""
 
-#@ click.argument("ssid")
+
 @wifi.command()
 @click.option("--ssid", prompt=True, hide_input=False)
 @click.option("--network_password", prompt=True, hide_input=True)
@@ -227,6 +230,20 @@ async def blink(dev):
 
 @cli.command()
 @pass_dev
+async def ping(dev):
+    """Ping the device"""
+    click.echo(f"Pinging the device")
+    try:
+        result = await dev.ping()
+        if result == 200:
+            click.echo("Successfully pinged device")
+        else:
+            click.echo(result.status_code)
+    except:
+        click.echo("Unable to ping device")
+
+@cli.command()
+@pass_dev
 async def on(dev: SwidgetDevice):
     """Turn the device on."""
     click.echo(f"Turning on {dev.friendly_name}")
@@ -240,12 +257,42 @@ async def off(dev: SwidgetDevice):
     click.echo(f"Turning off {dev.friendly_name}")
     return await dev.turn_off()
 
+
 @cli.command()
 @pass_dev
 async def enable_debug_server(dev: SwidgetDevice):
     """Enable Debug Server"""
     click.echo(f"Enabling debug server")
     return await dev.enable_debug_server()
+
+
+@cli.command()
+@pass_dev
+async def check_for_updates(dev: SwidgetDevice):
+    click.echo("Contacting Swidget servers to fetch for updates...")
+    available_updates = await dev.check_for_updates()
+    if len(available_updates['updates']) == 0:
+        click.echo("No available updates")
+    else:
+        click.echo("The following versions are available to update to")
+        for version in available_updates['updates']:
+            click.echo(click.style(f"\t+ {version}", fg="green"))
+
+
+@cli.command()
+@click.option("--version", required=False)
+@pass_dev
+async def upgrade(dev: SwidgetDevice, version: str):
+    if version is None:
+        click.echo("Contacting Swidget servers to fetch for latest version")
+        available_updates = await dev.check_for_updates()
+        if len(available_updates['updates']) == 0:
+            click.echo("No available updates")
+        else:
+            version = available_updates[-1]
+    click.echo(f"Upgrading to version: {version}")
+    response = await dev.update_version(version)
+    click.echo(response)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,5 @@
+"""A simple utility to stream websocket data from Swidget devices
 """
-  A simple utility to stream websocket data from Swidget devices
-"""
-
 import json
 import logging
 
@@ -26,6 +24,9 @@ async def cli(host, password, debug):
     _session = ClientSession(headers=headers, connector=connector)
     websocket = SwidgetWebsocket(host=host, token_name='x-secret-key', secret_key=password, session=_session, callback=print_message)
     try:
+        print("Attempting to connect...")
+        await websocket.connect()
+        print("Now listening...")
         await websocket.listen()
     except:
         print("Error: Unable to connect to Swidget device")
