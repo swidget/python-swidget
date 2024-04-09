@@ -1,17 +1,8 @@
-"""This script generates devinfo files for the test suite.
-
-If you have new, yet unsupported device or a device with no devinfo file under swidget/tests/fixtures,
-feel free to run this script and create a PR to add the file to the repository.
-
-Executing this script will several modules and methods one by one,
-and finally execute a query to query all of them at once.
+"""This dumps the state/ summary/ name of the device.
 """
-
+from collections import defaultdict, namedtuple
 import json
 import logging
-
-from collections import defaultdict, namedtuple
-from pprint import pprint
 
 from aiohttp import ClientSession, TCPConnector, client_exceptions
 import asyncclick as click
@@ -35,10 +26,13 @@ def default_to_regular(d):
 @click.argument("host")
 @click.option("-p", "--password", is_flag=False)
 @click.option("-d", "--debug", is_flag=True)
-async def cli(host, password, debug):
+@click.option("-t", "--trace", is_flag=True)
+async def cli(host, password, debug, trace):
     """Generate devinfo file for given device."""
     if debug:
         logging.basicConfig(level=logging.DEBUG)
+    if trace:
+        logging.basicConfig(level=logging.TRACE)
 
     headers = {"x-secret-key": password}
     connector = TCPConnector(force_close=True)
@@ -47,7 +41,7 @@ async def cli(host, password, debug):
     # Get Summary Info
     try:
         async with _session.get(
-                url=f"https://{host}/api/v1/summary", ssl=False,
+                url=f"http://{host}/api/v1/summary", ssl=False,
             ) as response:
                 summary = await response.json()
         click.echo(click.style("== Summary info ==", bold=True))
@@ -56,7 +50,7 @@ async def cli(host, password, debug):
 
         # Get State Info
         async with _session.get(
-                url=f"https://{host}/api/v1/state", ssl=False
+                url=f"http://{host}/api/v1/state", ssl=False
             ) as response:
                 state = await response.json()
         click.echo(click.style("== State info ==", bold=True))
@@ -64,7 +58,7 @@ async def cli(host, password, debug):
 
         # Get Name Info
         async with _session.get(
-                url=f"https://{host}/api/v1/name", ssl=False
+                url=f"http://{host}/api/v1/name", ssl=False
             ) as response:
                 name = await response.json()
         await _session.close()

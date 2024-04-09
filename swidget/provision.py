@@ -43,6 +43,7 @@ def send_credentials(device_name, ssid, network_password, secret_key):
             time.sleep(5)
             sentProvisionRequestAttempts += 1
 
+
 def verify_connect_result(key):
     headers = {'x-secret-key': key}
     connect_success = False

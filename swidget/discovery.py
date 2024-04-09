@@ -65,21 +65,26 @@ async def discover_devices(timeout=RESPONSE_SEC):
     return devices
 
 
-async def discover_single(host: str, token_name: str, password: str, ssl: bool, use_websockets: bool) -> SwidgetDevice:
+async def discover_single(host: str, token_name: str, password: str, use_https: bool, use_websockets: bool) -> SwidgetDevice:
     """Discover a single device by the given IP address.
 
     :param host: Hostname of device to query
     :rtype: SwidgetDevice
     :return: Object for querying/controlling found device.
     """
-    swidget_device = SwidgetDevice(host, token_name, password, ssl, use_websockets)
+    _LOGGER.debug(f"Checking for device at {host}")
+    swidget_device = SwidgetDevice(host, token_name, password, use_https, use_websockets=False)
+    _LOGGER.debug(f"Asking {host} for summary data")
     await swidget_device.get_summary()
     device_type = swidget_device.device_type
+    _LOGGER.debug(f"{host} is of type {device_type}")
     await swidget_device.stop()
 
+    _LOGGER.debug(f"Creating new device class of type: {device_type}")
     device_class = _get_device_class(device_type)
-    dev = device_class(host, token_name, password, ssl, use_websockets)
-    await dev.update()
+    _LOGGER.debug(f"{device_class}")
+    dev = device_class(host, token_name, password, use_https, use_websockets)
+    await dev.start()
     return dev
 
 
