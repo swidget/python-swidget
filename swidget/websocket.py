@@ -1,8 +1,22 @@
+import asyncio
 import aiohttp
+from aiohttp import ClientWebSocketResponse, WSMsgType
 import logging
 import socket
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def cancel_task(*tasks: asyncio.Task | None) -> None:
+    """Cancel task(s)."""
+    for task in tasks:
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
 
 class SwidgetWebsocket:
     """A websocket connection to a Swidget Device"""
@@ -29,10 +43,16 @@ class SwidgetWebsocket:
         self.failed_attempts = 0
         self._error_reason = None
         self.headers = {'Connection': 'Upgrade'}
+        self._receiver_task: asyncio.Task | None = None
 
     @property
     def connected(self) -> bool:
         return self._client is not None and not self._client.closed
+
+    @property
+    def websocket(self) -> ClientWebSocketResponse | None:
+        """Return the web socket."""
+        return self._ws
 
     def get_uri(self, host, token_name, secret_key):
         """Generate the websocket URI"""
@@ -43,7 +63,10 @@ class SwidgetWebsocket:
 
     async def connect(self) -> None:
         _LOGGER.debug("websocket.connect() called")
+        """Create a new connection and, optionally, start the monitor."""
+        await cancel_task(self._receiver_task)
         if self.connected:
+            _LOGGER.debug("Websocket already connected")
             return
 
         if not self.session:
@@ -51,6 +74,7 @@ class SwidgetWebsocket:
 
         try:
             self._client = await self.session.ws_connect(url=self.uri, headers=self.headers, verify_ssl=self._verify_ssl, heartbeat=30)
+            _LOGGER.debug("Websocket now connected")
         except (
             aiohttp.WSServerHandshakeError,
             aiohttp.ClientConnectionError,
@@ -60,7 +84,8 @@ class SwidgetWebsocket:
                 "Error occurred while communicating with WLED device"
                 f" on WebSocket at {self.host}"
             )
-            raise
+            raise(msg)
+        self._receiver_task = asyncio.ensure_future(self.listen())
 
     async def close(self) -> None:
         _LOGGER.debug("websocket.close() called")
@@ -88,7 +113,6 @@ class SwidgetWebsocket:
 
             if message.type == aiohttp.WSMsgType.TEXT:
                 message_data = message.json()
-                _LOGGER.debug(f"Data received from websocket: {message_data}")
                 await self.callback(message_data)
 
             if message.type in (

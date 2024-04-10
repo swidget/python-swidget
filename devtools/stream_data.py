@@ -30,7 +30,7 @@ async def cli(host, password, debug):
         await websocket.listen()
     except:
         print("Error: Unable to connect to Swidget device")
-        await _session.close()
+        await websocket.close()
 
 
 async def print_message(message):

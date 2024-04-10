@@ -34,6 +34,7 @@ class SwidgetDevice:
         self.use_websockets = use_websockets
         self.device_type = DeviceType.Unknown
         self._friendly_name = "Unknown Swidget Device"
+        self.assemblies = {}
         headers = {self.token_name: self.secret_key,
                    'Connection': 'keep-alive'}
         connector = TCPConnector(verify_ssl=False, force_close=True)
@@ -64,8 +65,8 @@ class SwidgetDevice:
         if self.use_websockets:
             _LOGGER.debug("Calling self._websocket.connect()")
             await self._websocket.connect()
-            _LOGGER.debug("Calling self._websocket.listen() ")
-            asyncio.create_task(self._websocket.listen())
+        _LOGGER.debug("Calling self.update() ")
+        await self.update()
 
     async def stop(self):
         """Stop the websocket."""
@@ -73,6 +74,9 @@ class SwidgetDevice:
         if hasattr(self, '_websocket'):
             await self._websocket.close()
         await self._session.close()
+
+    async def close(self):
+        await self.stop()
 
     async def message_callback(self, message):
         """Entrypoint for a websocket callback"""
