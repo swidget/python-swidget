@@ -127,7 +127,7 @@ def join(ssid, network_password, secret_key, friendly_name):
 
 
 @cli.command()
-@click.option("--timeout", default=5, required=False)
+@click.option("--timeout", default=10, required=False)
 @click.pass_context
 async def discover(ctx, timeout):
     """Discover devices in the network."""
