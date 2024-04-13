@@ -33,7 +33,7 @@ class SwidgetWebsocket:
         session=None,
         use_security=True,
     ):
-
+        self.host = host
         self.session = session or aiohttp.ClientSession()
         self.use_security = use_security
         self.uri = self.get_uri(host, token_name, secret_key)
@@ -52,7 +52,7 @@ class SwidgetWebsocket:
     @property
     def websocket(self) -> ClientWebSocketResponse | None:
         """Return the web socket."""
-        return self._ws
+        return self._client
 
     def get_uri(self, host, token_name, secret_key):
         """Generate the websocket URI"""
@@ -75,16 +75,18 @@ class SwidgetWebsocket:
         try:
             self._client = await self.session.ws_connect(url=self.uri, headers=self.headers, verify_ssl=self._verify_ssl, heartbeat=30)
             _LOGGER.debug("Websocket now connected")
-        except (
-            aiohttp.WSServerHandshakeError,
-            aiohttp.ClientConnectionError,
-            socket.gaierror,
-        ) as exception:
-            msg = (
-                "Error occurred while communicating with WLED device"
-                f" on WebSocket at {self.host}"
-            )
-            raise(msg)
+        except aiohttp.WSServerHandshakeError as handshake_error:
+            _LOGGER.error(f"Error occurred during websocket handshake: {handshake_error}")
+            raise
+        except aiohttp.ClientConnectionError as connection_error:
+            _LOGGER.error(f"Error connecting to the websocket server: {connection_error}")
+            raise
+        except socket.gaierror as gai_error:
+            _LOGGER.error(f"Error resolving host: {gai_error}")
+            raise
+        except Exception as e:
+            _LOGGER.error(f"An unexpected error occurred: {e}")
+            raise
         self._receiver_task = asyncio.ensure_future(self.listen())
 
     async def close(self) -> None:

@@ -1,4 +1,6 @@
 import logging
+from typing import Any
+
 from swidget.swidgetdevice import (
     DeviceType,
 )
@@ -13,7 +15,7 @@ class SwidgetTimerSwitch(SwidgetSwitch):
         super().__init__(host=host, token_name=token_name, secret_key=secret_key, use_https=use_https, use_websockets=use_websockets)
         self._device_type = DeviceType.TimerSwitch
 
-    async def set_countdown_timer(self, minutes):
+    async def set_countdown_timer(self, minutes) -> Any:
         """Set the countdown timer."""
         _LOGGER.debug("SwidgetTimerSwitch.set_brightness() called")
         await self.send_command(

@@ -1,8 +1,8 @@
 """python-swidget cli tool."""
 import logging
 import sys
+from typing import Any, cast
 from pprint import pformat as pf
-from typing import cast
 
 import asyncclick as click
 from contextlib import asynccontextmanager
@@ -24,8 +24,6 @@ TYPE_TO_CLASS = {
     "outlet": SwidgetOutlet,
     "pana_switch": SwidgetTimerSwitch
 }
-
-click.anyio_backend = "asyncio"
 
 
 pass_dev = click.make_pass_decorator(SwidgetDevice)
@@ -72,7 +70,7 @@ async def cli(ctx, host, password, debug, http_only, type):
     if ctx.invoked_subcommand == "discover" or ctx.invoked_subcommand == "wifi":
         return
     if host is None:
-        click.echo("No host name given, trying discovery..")
+        click.echo("No hostname or IP given, trying discovery..")
         await ctx.invoke(discover)
         return
     if type is not None:
@@ -193,31 +191,25 @@ async def state(dev: SwidgetDevice):
 @click.argument("command")
 async def raw_command(dev: SwidgetDevice, assembly, component, function, command):
     """Run a raw command on the device."""
-    import ast
-
-    if parameters is not None:
-        parameters = ast.literal_eval(parameters)
-
-    res = await dev.send_command(assembly, component, function, command)
-
-    click.echo(res)
-    return res
+    await dev.send_command(assembly, component, function, command)
+    click.echo("Command sent")
 
 
 @cli.command()
 @click.argument("brightness", type=click.IntRange(0, 100), default=None, required=False)
 @pass_dev
-async def brightness(dev: SwidgetDimmer, brightness: int):
+async def brightness(dev: SwidgetDevice, brightness: Any=None):
+    dimmer_dev = cast(SwidgetDimmer, dev)
     """Get or set brightness."""
-    if not dev.is_dimmer:
+    if not dimmer_dev.is_dimmer:
         click.echo("This device does not support brightness.")
         return
 
     if brightness is None:
-        click.echo(f"Brightness: {dev.brightness}")
+        click.echo(f"Brightness: {dimmer_dev.brightness}")
     else:
         click.echo(f"Setting brightness to {brightness}")
-        return await dev.set_brightness(brightness)
+        return await dimmer_dev.set_brightness(brightness)
 
 
 @cli.command()

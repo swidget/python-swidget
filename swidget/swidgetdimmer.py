@@ -28,14 +28,14 @@ class SwidgetDimmer(SwidgetDevice):
         except KeyError:
             return self.assemblies['host'].components["0"].functions["level"]["default"]
 
-    async def set_brightness(self, brightness):
+    async def set_brightness(self, brightness) -> None:
         """Set the brightness of the device."""
         _LOGGER.debug("SwidgetDimmer.set_brightness() called")
         await self.send_command(
             assembly="host", component="0", function="level", command={"now": brightness}
         )
 
-    async def set_default_brightness(self, brightness):
+    async def set_default_brightness(self, brightness) -> None:
         _LOGGER.debug("SwidgetDimmer.set_default_brightness() called")
         await self.send_command(
             assembly="host", component="0", function="level", command={"default": brightness}
