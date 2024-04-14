@@ -1,11 +1,10 @@
 import asyncio
-import json
 import logging
 import socket
-from typing import Awaitable, Callable, Dict, Optional, Type, cast
+from typing import Any, Type
 from urllib.parse import urlparse
 
-import ssdp
+import ssdp  # type: ignore
 
 from swidget.swidgetdevice import DeviceType, SwidgetDevice
 from .swidgetdimmer import SwidgetDimmer
@@ -39,7 +38,7 @@ class SwidgetProtocol(ssdp.SimpleServiceDiscoveryProtocol):
             insert_type = headers["SERVER"].split(" ")[1].split("+")[1].split("/")[0]
             friendly_name = headers["SERVER"].split("/")[2].strip('"')
             devices[mac_address] = SwidgetDiscoveredDevice(mac_address, ip_address, friendly_name)
-            _LOGGER.debug(f"Swidget device '{friendly_name}' at {ip_address}")
+            _LOGGER.debug(f"Swidget device '{friendly_name}' at {ip_address}. {device_type}/{insert_type}")
 
 
 async def discover_devices(timeout=RESPONSE_SEC):
@@ -65,7 +64,7 @@ async def discover_devices(timeout=RESPONSE_SEC):
     return devices
 
 
-async def discover_single(host: str, token_name: str, password: str, use_https: bool, use_websockets: bool) -> SwidgetDevice:
+async def discover_single(host: str, token_name: str, password: str, use_https: bool, use_websockets: bool) -> Any:
     """Discover a single device by the given IP address.
 
     :param host: Hostname of device to query
@@ -88,16 +87,16 @@ async def discover_single(host: str, token_name: str, password: str, use_https: 
     return dev
 
 
-def _get_device_class(device_type: str) -> Type[SwidgetDevice]:
+def _get_device_class(device_type: DeviceType) -> Type[SwidgetDevice]:
     """Find SmartDevice subclass for device described by passed data."""
-    if device_type == "outlet":
+    if device_type == DeviceType.Outlet:
         return SwidgetOutlet
-    elif device_type == "switch":
+    elif device_type == DeviceType.Switch:
         return SwidgetSwitch
-    elif device_type == "dimmer":
+    elif device_type == DeviceType.Dimmer:
         return SwidgetDimmer
-    elif device_type == "pana_switch": # This is the timer switch
+    elif device_type == DeviceType.TimerSwitch: # This is the timer switch
         return SwidgetTimerSwitch
-    elif device_type == "relay_switch":
+    elif device_type == DeviceType.RelaySwitch:
         return SwidgetSwitch
     raise SwidgetException("Unknown device type: %s" % device_type)

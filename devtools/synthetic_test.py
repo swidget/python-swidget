@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 import asyncclick as click
-from swidget import SwidgetDimmer
+from swidget import DeviceType, SwidgetDimmer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def setup_debug_logger():
 async def test_dimmer(host, password, use_https, use_websockets):
     try:
         dev = SwidgetDimmer(host=host, token_name='x-secret-key', secret_key=password, use_https=use_https, use_websockets=use_websockets)
-        assert dev._last_update == None
+        assert dev._last_update == 0
         assert dev.use_https == use_https
         if use_https is True:
             uri_scheme = "https"
@@ -43,7 +43,7 @@ async def test_dimmer(host, password, use_https, use_websockets):
 
         assert dev._friendly_name == "SFO-BATHROOM-SWIDGET-DIMMER"
         # print(f"test: {dev.device_type}")
-        assert dev.device_type == "dimmer"
+        assert dev.device_type == DeviceType.Dimmer
         assert dev.version == "1.5.27"
         assert dev.is_outlet == False
         assert dev.is_switch == False
