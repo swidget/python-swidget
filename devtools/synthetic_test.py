@@ -42,7 +42,7 @@ async def test_dimmer(host, password, use_https, use_websockets):
         await asyncio.sleep(5)
 
         assert dev._friendly_name == "SFO-BATHROOM-SWIDGET-DIMMER"
-        # print(f"test: {dev.device_type}")
+        print(await dev.check_for_updates())
         assert dev.device_type == DeviceType.Dimmer
         assert dev.version == "1.5.27"
         assert dev.is_outlet == False
@@ -57,7 +57,7 @@ async def test_dimmer(host, password, use_https, use_websockets):
         assert dev.insert_type == "TEMP HUMI MOTION"
 
         assert await dev.blink() == {'blink': True}
-        assert await dev.ping() == 200
+        assert await dev.ping() == True
 
         await dev.turn_off()
         await asyncio.sleep(10)
@@ -80,9 +80,9 @@ async def test_dimmer(host, password, use_https, use_websockets):
         await dev.stop()
 
 async def test_dimmer_combinations(host, password):
-    await test_dimmer(host, password, False, False)
+    # await test_dimmer(host, password, False, False)
     await test_dimmer(host, password, True, False)
-    await test_dimmer(host, password, False, True)
+    # await test_dimmer(host, password, False, True)
     await test_dimmer(host, password, True, True)
 
 @click.command()

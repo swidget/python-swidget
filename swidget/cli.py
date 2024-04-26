@@ -116,8 +116,8 @@ def join(ssid, network_password, secret_key, friendly_name):
     confirmation = click.prompt(f"Are you connected to a wifi network that stars with the name 'Swidget-' (y/n)")
     if confirmation == "y":
         click.echo(f"Asking the device to connect to network {ssid}..")
-        # def provision_wifi(ssid, network_password, token_name, secret_key, friendly_name):
         provision_wifi(friendly_name, ssid, network_password, secret_key)
+        click.echo(f"Disconnect from the `swidget` network and connect back your main WiFi network")
         return True
     else:
         click.echo("Not provisioning wifi")
@@ -164,7 +164,7 @@ async def state(dev: SwidgetDevice):
     click.echo(f"\tMAC (rssi):   {dev.mac_address} ({dev.rssi})")
 
     click.echo(click.style("\n\t== Current State ==", bold=True))
-    realtime_values = await dev.realtime_values
+    realtime_values = dev.realtime_values
     for info_name, info_data in realtime_values.items():
         if isinstance(info_data, list):
             click.echo(f"\t{info_name}:")
@@ -263,11 +263,11 @@ async def enable_debug_server(dev: SwidgetDevice):
 async def check_for_updates(dev: SwidgetDevice):
     click.echo("Contacting Swidget servers to fetch for updates...")
     available_updates = await dev.check_for_updates()
-    if len(available_updates['updates']) == 0:
+    if len(available_updates) == 0:
         click.echo("No available updates")
     else:
         click.echo("The following versions are available to update to")
-        for version in available_updates['updates']:
+        for version in available_updates:
             click.echo(click.style(f"\t+ {version}", fg="green"))
 
 
@@ -278,7 +278,7 @@ async def upgrade(dev: SwidgetDevice, version: str):
     if version is None:
         click.echo("Contacting Swidget servers to fetch for latest version")
         available_updates = await dev.check_for_updates()
-        if len(available_updates['updates']) == 0:
+        if len(available_updates) == 0:
             click.echo("No available updates")
         else:
             version = available_updates[-1]

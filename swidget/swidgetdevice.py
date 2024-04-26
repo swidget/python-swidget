@@ -1,9 +1,10 @@
 import json
 import logging
 import time
+from types import TracebackType
 
 from aiohttp import ClientSession, TCPConnector
-import asyncio
+from collections.abc import Callable
 from enum import Enum
 from typing import Any, Dict, List
 
@@ -23,6 +24,36 @@ class DeviceType(Enum):
     Unknown = -1
 
 
+class InsertType(Enum):
+    """Insert type enum."""
+    USB = "USB"
+    THM = "TEMP HUMI MOTION"
+    TH = "TEMP HUMI"
+    AQ = "AIR QUALITY"
+    GL = "GUIDE LIGHT"
+    PO = "POWER OUT"
+    Unknown = -1
+
+
+class SelfDiagnosticErrorCodes(Enum):
+    """Self-Diagnostic error codes"""
+    UNUSED = 0
+    AQ = 1
+    GUIDELIGHT = 2
+    LIGHT_SENSOR = 3
+    MOTION = 4
+    POWER_OUT = 5
+    PRESSURE = 6
+    TEMP = 7
+    USB = 8
+    VIBRATION = 9
+    VIDEO = 10
+    ADVANCED_GL = 11
+    HUMI = 12
+    CO2 = 13
+    PART_MATTER = 14
+
+
 class SwidgetDevice:
     def __init__(self, host, token_name, secret_key, use_https=True, use_websockets=True) -> None:
         self.token_name = token_name
@@ -34,6 +65,7 @@ class SwidgetDevice:
         self.device_type = DeviceType.Unknown
         self._friendly_name = "Unknown Swidget Device"
         self.assemblies: Dict[Any, Any] = dict()
+        self._subscribers: Callable[[Dict[str, Any]], Any] = list()
         headers = {self.token_name: self.secret_key,
                    'Connection': 'keep-alive'}
         connector = TCPConnector(verify_ssl=False, force_close=True)
@@ -46,6 +78,10 @@ class SwidgetDevice:
                 secret_key=self.secret_key,
                 callback=self.message_callback,
                 session=self._session)
+
+    @property
+    def connected(self) -> bool:
+        return self._websocket.connected
 
     def get_websocket(self) -> SwidgetWebsocket | None:
         if self.use_websockets:
@@ -77,6 +113,20 @@ class SwidgetDevice:
     async def close(self) -> None:
         await self.stop()
 
+    async def add_event_callback(self, callback: Callable[[Dict, Any], None],) -> bool:
+        for c in self._subscribers:
+            if c == callback:
+                _LOGGER.warn(f"Callback has already been added, not adding the same callback function again")
+                return False
+        self._subscribers.append(callback)
+        return True
+
+    async def remove_event_callback(self, callback: Callable[[Dict, Any], None],) -> bool:
+        if callback in self._subscribers:
+            self._subscribers.remove(callback)
+            return True
+        return False
+
     async def message_callback(self, message) -> None:
         """Entrypoint for a websocket callback"""
         _LOGGER.debug("SwidgetDevice.message_callback() called")
@@ -88,6 +138,12 @@ class SwidgetDevice:
             await self.process_state(message)
         else:
             _LOGGER.error(f"Unknown message type from websocket. Type given was: {message["request_id"]}")
+        await self.signal_callbacks(message)
+
+    async def signal_callbacks(self, message):
+        _LOGGER.debug("SwidgetDevice.signal_callsbacks() called")
+        for callback in self._subscribers:
+            await callback(message)
 
     async def get_summary(self) -> None:
         """Get a summary of the device over HTTP"""
@@ -213,7 +269,7 @@ class SwidgetDevice:
             function_value = state[assembly]["components"][component][function]
             self.assemblies[assembly].components[component].functions[function] = function_value  # fmt: skip
 
-    async def ping(self) -> int | SwidgetException:
+    async def ping(self) -> bool:
         """Ping the device to ensure it's devices
 
         :raises SwidgetException: Raise the exception if there we are unable to connect to the Swidget device
@@ -224,9 +280,11 @@ class SwidgetDevice:
                 url=f"{self.uri_scheme}://{self.ip_address}/ping",
                 ssl=False
             ) as response:
-                return response.status
+                if response.status == 200:
+                    return True
+                return False
         except:
-            raise SwidgetException
+            return False
 
     async def blink(self) -> Any:
         """Make the device LED blink
@@ -254,7 +312,9 @@ class SwidgetDevice:
                 url=f"{self.uri_scheme}://{self.ip_address}/debug?x-secret-key={self.secret_key}",
                 ssl=False
             ) as response:
-                return await response.json()
+                if response.status == 200:
+                    return True
+                return False
         except:
             raise SwidgetException
 
@@ -284,7 +344,8 @@ class SwidgetDevice:
                 url=f"{self.uri_scheme}://{self.ip_address}/api/v1/update",
                 ssl=False
             ) as response:
-                return await response.json()
+                newer_versions = await response.json()
+                return sorted(newer_versions['updates'])
         except:
             raise SwidgetException
 
@@ -298,11 +359,14 @@ class SwidgetDevice:
                 "version": version
             }
             async with self._session.post(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/update",
+                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/update/version",
                 ssl=False,
                 data=json.dumps(data)
             ) as response:
-                return await response.json()
+                result = await response.status
+                if result == 200:
+                    return True
+                return False
         except:
             raise SwidgetException
 
@@ -428,6 +492,7 @@ class SwidgetDevice:
     @property  # type: ignore
     def is_on(self) -> bool:
         """Return whether device is on."""
+        _LOGGER.debug("SwidgetDevice.is_on called")
         dimmer_state = self.assemblies['host'].components["0"].functions['toggle']["state"]
         if dimmer_state == "on":
             return True
@@ -436,6 +501,7 @@ class SwidgetDevice:
     async def turn_on(self) -> None:
         """Turn the device on."""
         _LOGGER.debug("SwidgetDevice.turn_on() called")
+        self.assemblies['host'].components["0"].functions['toggle']["state"] = "on"
         await self.send_command(
             assembly="host", component="0", function="toggle", command={"state": "on"}
         )
@@ -443,18 +509,23 @@ class SwidgetDevice:
     async def turn_off(self) -> None:
         """Turn the device off."""
         _LOGGER.debug("SwidgetDevice.turn_off() called")
+        self.assemblies['host'].components["0"].functions['toggle']["state"] = "off"
         await self.send_command(
             assembly="host", component="0", function="toggle", command={"state": "off"}
         )
 
     async def turn_on_usb_insert(self) -> None:
         """Turn the USB insert on."""
+        _LOGGER.debug("SwidgetDevice.turn_on_usb_insert() called")
+        self.assemblies['insert'].components["usb"].functions['toggle']["state"] = "on"
         await self.send_command(
             assembly="insert", component="usb", function="toggle", command={"state": "on"}
         )
 
     async def turn_off_usb_insert(self) -> None:
         """Turn the USB insert off."""
+        _LOGGER.debug("SwidgetDevice.turn_off_usb_insert() called")
+        self.assemblies['insert'].components["usb"].functions['toggle']["state"] = "off"
         await self.send_command(
             assembly="insert", component="usb", function="toggle", command={"state": "off"}
         )
@@ -462,10 +533,28 @@ class SwidgetDevice:
     @property  # type: ignore
     def usb_is_on(self) -> bool:
         """Return whether USB is on."""
+        _LOGGER.debug("SwidgetDevice.usb_is_on called")
         usb_state = self.assemblies['insert'].components["usb"].functions['toggle']["state"]
         if usb_state == "on":
             return True
         return False
+
+    async def __aenter__(self) -> "SwidgetDevice":
+        """Initialize and connect the Swidget Websocket client."""
+        await self.connect()
+        return self
+
+    async def __aexit__(
+        self, exc_type: Exception, exc_value: str, traceback: TracebackType
+    ) -> None:
+        """Disconnect from the websocket."""
+        await self.disconnect()
+
+    def __repr__(self) -> str:
+        """Return the representation."""
+        url = self.connection.ws_server_url
+        prefix = "" if self.connection.connected else "not "
+        return f"{type(self).__name__}(ws_server_url={url!r}, {prefix}connected)"
 
     def __repr__(self) -> str:
         if self._last_update == 0:
