@@ -137,8 +137,8 @@ class SwidgetWebsocket:
 
     async def receive_message_or_raise(self) -> Any:
         """Receive ONE (raw) message or raise."""
-        assert self._ws_client
-        ws_msg = await self._ws_client.receive()
+        assert self._client
+        ws_msg = await self._client.receive()
 
         if ws_msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.CLOSING):
             raise ConnectionError("Connection was closed.")

@@ -65,7 +65,7 @@ class SwidgetDevice:
         self.device_type = DeviceType.Unknown
         self._friendly_name = "Unknown Swidget Device"
         self.assemblies: Dict[Any, Any] = dict()
-        self._subscribers: Callable[[Dict[str, Any]], Any] = list()
+        self._subscribers: List[Any] = list()
         headers = {self.token_name: self.secret_key,
                    'Connection': 'keep-alive'}
         connector = TCPConnector(verify_ssl=False, force_close=True)
@@ -113,7 +113,10 @@ class SwidgetDevice:
     async def close(self) -> None:
         await self.stop()
 
-    async def add_event_callback(self, callback: Callable[[Dict, Any], None],) -> bool:
+    async def disconnect(self) -> None:
+        await self.stop()
+
+    def add_event_callback(self, callback: Callable[[Dict, Any], None],) -> bool:
         for c in self._subscribers:
             if c == callback:
                 _LOGGER.warn(f"Callback has already been added, not adding the same callback function again")
@@ -121,7 +124,7 @@ class SwidgetDevice:
         self._subscribers.append(callback)
         return True
 
-    async def remove_event_callback(self, callback: Callable[[Dict, Any], None],) -> bool:
+    def remove_event_callback(self, callback: Callable[[Dict, Any], None],) -> bool:
         if callback in self._subscribers:
             self._subscribers.remove(callback)
             return True
@@ -363,7 +366,7 @@ class SwidgetDevice:
                 ssl=False,
                 data=json.dumps(data)
             ) as response:
-                result = await response.status
+                result = response.status
                 if result == 200:
                     return True
                 return False
@@ -389,7 +392,7 @@ class SwidgetDevice:
             "rssi": self.rssi
         }
 
-    async def get_child_consumption(self, plug_id=0) -> Any:
+    def get_child_consumption(self, plug_id=0) -> Any:
         """Get the power consumption of a plug in watts."""
         if plug_id == "all":
             return_dict = {}
@@ -401,7 +404,7 @@ class SwidgetDevice:
             return return_dict
         return self.assemblies['host'].components[str(plug_id)].functions['power']['current']
 
-    async def total_consumption(self) -> float:
+    def total_consumption(self) -> float:
         """Get the total power consumption in watts."""
         total_consumption = 0
         for id, properties in self.assemblies['host'].components.items():
@@ -409,7 +412,7 @@ class SwidgetDevice:
         return total_consumption
 
     @property
-    async def realtime_values(self) -> Dict:
+    def realtime_values(self) -> Dict:
         """Get a dict of realtime value attributes from the insert and host
 
         :return: A dictionary of insert sensor values and power consumption values
@@ -419,7 +422,7 @@ class SwidgetDevice:
         for feature in self.insert_features:
             return_dict.update(self.get_function_values(feature))
         return_dict.update({'rssi': self.rssi})
-        power_values = await self.get_child_consumption("all")
+        power_values =self.get_child_consumption("all")
         if power_values:
             return_dict.update(power_values)
         return return_dict
@@ -549,12 +552,6 @@ class SwidgetDevice:
     ) -> None:
         """Disconnect from the websocket."""
         await self.disconnect()
-
-    def __repr__(self) -> str:
-        """Return the representation."""
-        url = self.connection.ws_server_url
-        prefix = "" if self.connection.connected else "not "
-        return f"{type(self).__name__}(ws_server_url={url!r}, {prefix}connected)"
 
     def __repr__(self) -> str:
         if self._last_update == 0:
