@@ -116,7 +116,7 @@ class SwidgetDevice:
     async def disconnect(self) -> None:
         await self.stop()
 
-    def add_event_callback(self, callback: Callable[[Dict, Any], None],) -> bool:
+    def add_event_callback(self, callback: Callable[[Any], Any]):
         for c in self._subscribers:
             if c == callback:
                 _LOGGER.warn(f"Callback has already been added, not adding the same callback function again")
@@ -124,7 +124,7 @@ class SwidgetDevice:
         self._subscribers.append(callback)
         return True
 
-    def remove_event_callback(self, callback: Callable[[Dict, Any], None],) -> bool:
+    def remove_event_callback(self, callback: Callable[[Any], Any]):
         if callback in self._subscribers:
             self._subscribers.remove(callback)
             return True
