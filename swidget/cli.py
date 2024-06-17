@@ -1,28 +1,29 @@
 """python-swidget cli tool."""
+
 import logging
 import sys
-from typing import Any, cast
+from contextlib import asynccontextmanager
 from pprint import pformat as pf
+from typing import Any, cast
 
 import asyncclick as click
-from contextlib import asynccontextmanager
 
 from swidget import (
+    SwidgetDevice,
+    SwidgetDimmer,
+    SwidgetOutlet,
+    SwidgetSwitch,
+    SwidgetTimerSwitch,
     discover_devices,
     discover_single,
     provision_wifi,
-    SwidgetDevice,
-    SwidgetDimmer,
-    SwidgetSwitch,
-    SwidgetOutlet,
-    SwidgetTimerSwitch
 )
 
 TYPE_TO_CLASS = {
     "dimmer": SwidgetDimmer,
     "switch": SwidgetSwitch,
     "outlet": SwidgetOutlet,
-    "pana_switch": SwidgetTimerSwitch
+    "pana_switch": SwidgetTimerSwitch,
 }
 
 
@@ -30,24 +31,23 @@ pass_dev = click.make_pass_decorator(SwidgetDevice)
 
 
 @click.group(invoke_without_command=True)
-@click.option("--host",
+@click.option(
+    "--host",
     envvar="SWIDGET_HOST",
     required=False,
     help="The host name or IP address of the device to connect to.",
 )
-@click.option("-p", "--password",
+@click.option(
+    "-p",
+    "--password",
     envvar="SWIDGET_PASSWORD",
     required=False,
     help="The password of the device to connect to.",
 )
-@click.option("-d", "--debug",
-    envvar="SWIDGET_DEBUG",
-    default=False,
-    is_flag=True)
-@click.option("--http_only",
-    envvar="SWIDGET_HTTP_ONLY",
-    default=True,
-    is_flag=True)
+@click.option("-d", "--debug", envvar="SWIDGET_DEBUG", default=False, is_flag=True)
+@click.option(
+    "-ho", "--http_only", envvar="SWIDGET_HTTP_ONLY", default=True, is_flag=True
+)
 @click.option(
     "--type",
     envvar="SWIDGET_TYPE",
@@ -74,18 +74,22 @@ async def cli(ctx, host, password, debug, http_only, type):
         await ctx.invoke(discover)
         return
     if type is not None:
-        dev = TYPE_TO_CLASS[type](host=host,
-                                  token_name='x-secret-key',
-                                  secret_key=password,
-                                  use_https=http_only,
-                                  use_websockets=False)
+        dev = TYPE_TO_CLASS[type](
+            host=host,
+            token_name="x-secret-key",
+            secret_key=password,
+            use_https=http_only,
+            use_websockets=False,
+        )
     else:
         click.echo("No --type defined, discovering...")
-        dev = await discover_single(host=host,
-                                    token_name='x-secret-key',
-                                    password=password,
-                                    use_https=http_only,
-                                    use_websockets=False)
+        dev = await discover_single(
+            host=host,
+            token_name="x-secret-key",
+            password=password,
+            use_https=http_only,
+            use_websockets=False,
+        )
         await dev.update()
 
     @asynccontextmanager
@@ -113,11 +117,15 @@ def wifi():
 @click.option("--friendly_name", prompt=True, hide_input=False)
 def join(ssid, network_password, secret_key, friendly_name):
     """Join the given wifi network."""
-    confirmation = click.prompt(f"Are you connected to a wifi network that stars with the name 'Swidget-' (y/n)")
+    confirmation = click.prompt(
+        "Are you connected to a wifi network that stars with the name 'Swidget-' (y/n)"
+    )
     if confirmation == "y":
         click.echo(f"Asking the device to connect to network {ssid}..")
         provision_wifi(friendly_name, ssid, network_password, secret_key)
-        click.echo(f"Disconnect from the `swidget` network and connect back your main WiFi network")
+        click.echo(
+            "Disconnect from the 'swidget' network and connect back your main WiFi network"
+        )
         return True
     else:
         click.echo("Not provisioning wifi")
@@ -135,6 +143,7 @@ async def discover(ctx, timeout):
     for device in devices.values():
         click.echo(f"{device.host}[{device.mac}] - {device.friendly_name}")
 
+
 @cli.command()
 @pass_dev
 async def hwinfo(dev):
@@ -149,7 +158,7 @@ async def hwinfo(dev):
 async def state(dev: SwidgetDevice):
     """Print out device state and versions."""
     click.echo(click.style(f"== {dev.friendly_name} - {dev.model} ==", bold=True))
-    click.echo(f"\tFriendly Name:  {dev.friendly_name}")
+    click.echo(f"\tFriendly Name: {dev.friendly_name}")
     click.echo(f"\tHost: {dev.ip_address}")
     click.echo(
         click.style(
@@ -159,9 +168,9 @@ async def state(dev: SwidgetDevice):
     )
 
     click.echo(click.style("\t== Generic information ==", bold=True))
-    click.echo(f"\tHardware:     {dev.hw_info['model']}")
-    click.echo(f"\tSoftware:     {dev.hw_info['version']}")
-    click.echo(f"\tMAC (rssi):   {dev.mac_address} ({dev.rssi})")
+    click.echo(f"\tHardware: {dev.hw_info['model']}")
+    click.echo(f"\tSoftware: {dev.hw_info['version']}")
+    click.echo(f"\tMAC (rssi): {dev.mac_address} ({dev.rssi})")
 
     click.echo(click.style("\n\t== Current State ==", bold=True))
     realtime_values = dev.realtime_values
@@ -176,7 +185,6 @@ async def state(dev: SwidgetDevice):
     click.echo(click.style("\n\t== Host Features ==", bold=True))
     for function in dev.host_features:
         click.echo(click.style(f"\t+ {function}", fg="green"))
-
 
     click.echo(click.style("\n\t== Insert Features ==", bold=True))
     for function in dev.insert_features:
@@ -198,7 +206,8 @@ async def raw_command(dev: SwidgetDevice, assembly, component, function, command
 @cli.command()
 @click.argument("brightness", type=click.IntRange(0, 100), default=None, required=False)
 @pass_dev
-async def brightness(dev: SwidgetDevice, brightness: Any=None):
+async def brightness(dev: SwidgetDevice, brightness: Any = None):
+    """Get or set the brightness of a dimmer device."""
     dimmer_dev = cast(SwidgetDimmer, dev)
     """Get or set brightness."""
     if not dimmer_dev.is_dimmer:
@@ -215,24 +224,25 @@ async def brightness(dev: SwidgetDevice, brightness: Any=None):
 @cli.command()
 @pass_dev
 async def blink(dev):
-    """Set the device insert to blink"""
-    click.echo(f"Requesting the device to blink")
+    """Set the device insert to blink."""
+    click.echo("Requesting the device to blink")
     return await dev.blink()
 
 
 @cli.command()
 @pass_dev
 async def ping(dev):
-    """Ping the device"""
-    click.echo(f"Pinging the device")
+    """Ping the device."""
+    click.echo("Pinging the device")
     try:
         result = await dev.ping()
         if result == 200:
             click.echo("Successfully pinged device")
         else:
             click.echo(result.status_code)
-    except:
+    except Exception:
         click.echo("Unable to ping device")
+
 
 @cli.command()
 @pass_dev
@@ -253,14 +263,15 @@ async def off(dev: SwidgetDevice):
 @cli.command()
 @pass_dev
 async def enable_debug_server(dev: SwidgetDevice):
-    """Enable Debug Server"""
-    click.echo(f"Enabling debug server")
+    """Enable Debug Server."""
+    click.echo("Enabling debug server")
     return await dev.enable_debug_server()
 
 
 @cli.command()
 @pass_dev
 async def check_for_updates(dev: SwidgetDevice):
+    """Connect to Swidget Cloud to see if there are any updates available for the insert."""
     click.echo("Contacting Swidget servers to fetch for updates...")
     available_updates = await dev.check_for_updates()
     if len(available_updates) == 0:
@@ -275,6 +286,7 @@ async def check_for_updates(dev: SwidgetDevice):
 @click.option("--version", required=False)
 @pass_dev
 async def upgrade(dev: SwidgetDevice, version: str):
+    """Update the device to a newer version."""
     if version is None:
         click.echo("Contacting Swidget servers to fetch for latest version")
         available_updates = await dev.check_for_updates()
