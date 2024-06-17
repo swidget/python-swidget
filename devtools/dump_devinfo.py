@@ -1,13 +1,10 @@
-"""This dumps the state/ summary/ name of the device.
-"""
-from collections import defaultdict, namedtuple
+"""This dumps the state/ summary/ name of the device."""
 import json
 import logging
+from collections import defaultdict, namedtuple
 
-from aiohttp import ClientSession, TCPConnector, client_exceptions
 import asyncclick as click
-
-from swidget import discover_single
+from aiohttp import ClientSession, TCPConnector, client_exceptions
 
 Call = namedtuple("Call", "module method")
 
@@ -26,45 +23,42 @@ def default_to_regular(d):
 @click.argument("host")
 @click.option("-p", "--password", is_flag=False)
 @click.option("-d", "--debug", is_flag=True)
-@click.option("-t", "--trace", is_flag=True)
-async def cli(host, password, debug, trace):
+async def cli(host, password, debug):
     """Generate devinfo file for given device."""
     if debug:
         logging.basicConfig(level=logging.DEBUG)
-    if trace:
-        logging.basicConfig(level=logging.TRACE)
 
-    headers = {"x-secret-key": password}
+    headers = {}
     connector = TCPConnector(force_close=True)
     _session = ClientSession(headers=headers, connector=connector)
 
     # Get Summary Info
     try:
         async with _session.get(
-                url=f"http://{host}/api/v1/summary", ssl=False,
-            ) as response:
-                summary = await response.json()
+            url=f"http://{host}/api/v1/summary",
+            ssl=False,
+        ) as response:
+            summary = await response.json()
         click.echo(click.style("== Summary info ==", bold=True))
         click.echo(json.dumps(summary, sort_keys=True, indent=2))
         click.echo()
 
         # Get State Info
         async with _session.get(
-                url=f"http://{host}/api/v1/state", ssl=False
-            ) as response:
-                state = await response.json()
+            url=f"http://{host}/api/v1/state", ssl=False
+        ) as response:
+            state = await response.json()
         click.echo(click.style("== State info ==", bold=True))
         click.echo(json.dumps(state, sort_keys=True, indent=2))
 
         # Get Name Info
         async with _session.get(
-                url=f"http://{host}/api/v1/name", ssl=False
-            ) as response:
-                name = await response.json()
+            url=f"http://{host}/api/v1/name", ssl=False
+        ) as response:
+            name = await response.json()
         await _session.close()
         click.echo(click.style("== Name ==", bold=True))
         click.echo(json.dumps(name, sort_keys=True, indent=2))
-
 
         final = {"state": state, "summary": summary, "name": name}
         save_to = f"{summary['model']}_{summary['version']}.json"
@@ -78,8 +72,8 @@ async def cli(host, password, debug, trace):
         else:
             click.echo("Not saving.")
     except client_exceptions.ClientConnectorError:
-         await _session.close()
-         click.echo("Error: Unable to connect to Swidget device")
+        await _session.close()
+        click.echo("Error: Unable to connect to Swidget device")
 
 
 if __name__ == "__main__":
