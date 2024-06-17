@@ -59,7 +59,7 @@ class SwidgetProtocol(ssdp.SimpleServiceDiscoveryProtocol):
                 insert_type=insert_type,
             )
             _LOGGER.debug(
-                f"Swidget device '{friendly_name}' at {ip_address}. {device_type}/{insert_type}"
+                f"Discovered Swidget device via SSDP: '{friendly_name}' at {ip_address} Type:{device_type}/{insert_type}"
             )
 
 
