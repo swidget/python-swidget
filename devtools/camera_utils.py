@@ -30,6 +30,12 @@ async def cli(host, password, debug):
     print(device.available_streams_types)
     print(device.stream_url)
     print(device.snapshot_url)
+    snapshot_1 = await device.get_snapshot_bytes()
+    print(len(snapshot_1))
+    snapshot_2 = await device.get_snapshot_bytes(1440, 1440)
+    print(len(snapshot_2))
+    snapshot_3 = await device.get_snapshot_bytes(2048, 2048)
+    print(len(snapshot_3))
     await device.close()
 
 
