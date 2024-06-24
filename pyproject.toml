@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "python-swidget"
-version = "1.2.3"
+version = "1.2.4"
 description = "Python API for Swidget smart devices"
 license = "GPL-3.0-or-later"
 authors = ["Swidget"]
@@ -22,7 +22,7 @@ importlib-metadata = "*"
 asyncclick = ">=8"
 pydantic = "^1"
 ssdp = "1.1.1"
-requests = "2.31.0"
+requests = "2.32.3"
 types-requests = "2.31.0.6"
 urllib3 = '1.26.5'
 

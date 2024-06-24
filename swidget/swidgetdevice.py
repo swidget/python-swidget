@@ -608,9 +608,14 @@ class SwidgetDevice:
         if InsertType.VIDEO.value in self.insert_features:
             try:
                 snapshot_url = self.snapshot_url
+                headers = self._session.headers.copy()
+                if width is not None and height is not None:
+                    headers.update(
+                        {"x-picture-width": str(width), "x-picture-height": str(height)}
+                    )
                 if isinstance(snapshot_url, str):
                     async with self._session.get(
-                        url=snapshot_url, ssl=False
+                        url=snapshot_url, headers=headers, ssl=False
                     ) as response:
                         if response.status == 200:
                             return await response.read()
