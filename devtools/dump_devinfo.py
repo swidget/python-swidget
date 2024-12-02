@@ -35,7 +35,7 @@ async def cli(host, password, debug):
     # Get Summary Info
     try:
         async with _session.get(
-            url=f"http://{host}/api/v1/summary",
+            url=f"https://{host}/api/v1/summary",
             ssl=False,
         ) as response:
             summary = await response.json()

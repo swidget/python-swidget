@@ -143,7 +143,7 @@ class SwidgetDevice:
         """Wrapper for the stop() function."""
         await self.stop()
 
-    def add_event_callback(self, callback: Callable[[Any], Any]):
+    def add_event_callback(self, callback: Callable[[Any], Any]) -> bool:
         """Register a function to be called when a new websocket message is recieved."""
         for c in self._subscribers:
             if c == callback:
@@ -154,7 +154,7 @@ class SwidgetDevice:
         self._subscribers.append(callback)
         return True
 
-    def remove_event_callback(self, callback: Callable[[Any], Any]):
+    def remove_event_callback(self, callback: Callable[[Any], Any]) -> bool:
         """Remove a registered callback function."""
         if callback in self._subscribers:
             self._subscribers.remove(callback)
@@ -181,7 +181,7 @@ class SwidgetDevice:
             )
         await self.signal_callbacks(message)
 
-    async def signal_callbacks(self, message):
+    async def signal_callbacks(self, message) -> None:
         """Call any available registered callback functions."""
         _LOGGER.debug("SwidgetDevice.signal_callsbacks() called")
         for callback in self._subscribers:
