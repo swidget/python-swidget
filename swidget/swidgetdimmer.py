@@ -25,7 +25,7 @@ class SwidgetDimmer(SwidgetDevice):
             use_https=use_https,
             use_websockets=use_websockets,
         )
-        self._device_type = DeviceType.Dimmer
+        self.device_type = DeviceType.Dimmer
 
     @property  # type: ignore
     def brightness(self) -> int:

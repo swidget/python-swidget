@@ -2,73 +2,75 @@
 import asyncio
 import logging
 import socket
-from typing import Any
+from typing import Any, Awaitable, Callable, Union
 
 import aiohttp
-from aiohttp import ClientWebSocketResponse, WSMsgType
+from aiohttp import (
+    ClientConnectionError,
+    ClientWebSocketResponse,
+    WSMsgType,
+    WSServerHandshakeError,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def cancel_task(*tasks: asyncio.Task | None) -> None:
-    """Cancel task(s)."""
-    for task in tasks:
-        if task is not None and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
 
 
 class SwidgetWebsocket:
     """A websocket connection to a Swidget Device."""
 
-    # pylint: disable=too-many-instance-attributes
-    _client: aiohttp.ClientWebSocketResponse | None = None
-
     def __init__(
         self,
-        host,
-        token_name,
-        secret_key,
-        callback,
-        session=None,
-        use_security=True,
+        host: str,
+        token_name: str,
+        secret_key: str,
+        callback: Union[Callable[[Any], None], Callable[[Any], Awaitable[None]]],
+        session: aiohttp.ClientSession | None = None,
+        use_security: bool = True,
+        retry_interval: int = 30,  # Initial retry interval in seconds
+        max_retries: int = 200,  # Maximum number of reconnection attempts
     ):
+        """Initialize the SwidgetWebsocket.
+
+        Args:
+            host: The hostname or IP address of the Swidget device.
+            token_name: The name of the authentication token.
+            secret_key: The secret key for authentication.
+            callback: A callable that will be called with received messages.
+            session: An optional aiohttp.ClientSession to use.
+            use_security: Whether to use wss:// (True) or ws:// (False).
+            retry_interval: Initial interval for reconnection attempts.
+            max_retries: Maximum number of reconnection attempts.
+        """
         self.host = host
+        self.token_name = token_name or "x-secret-key"
+        self.secret_key = secret_key or ""
         self.session = session or aiohttp.ClientSession()
         self.use_security = use_security
-        self.uri = self.get_uri(host, token_name, secret_key)
         self.callback = callback
+        self.retry_interval = retry_interval
+        self.max_retries = max_retries
+        self.retry_count = 0
         self._verify_ssl = False
-        self._state = None
-        self.failed_attempts = 0
-        self._error_reason = None
-        self.headers = {"Connection": "Upgrade"}
+        self.uri = self._get_uri()
+
+        # self._client= None
+        self.is_running = True
+        self._closing = False
+        self._client: ClientWebSocketResponse | None = None
         self._receiver_task: asyncio.Task | None = None
+        self._closing = False
 
-    @property
-    def connected(self) -> bool:
-        """Return of status of whether the device is currently connected."""
-        return self._client is not None and not self._client.closed
-
-    @property
-    def websocket(self) -> ClientWebSocketResponse | None:
-        """Return the web socket."""
-        return self._client
-
-    def get_uri(self, host, token_name, secret_key):
+    def _get_uri(self) -> str:
         """Generate the websocket URI."""
-        if self.use_security:
-            return f"wss://{host}/api/v1/sock?{token_name}={secret_key}"
-        else:
-            return f"ws://{host}/api/v1/sock?{token_name}={secret_key}"
+        protocol = "wss" if self.use_security else "ws"
+        return (
+            f"{protocol}://{self.host}/api/v1/sock?{self.token_name}={self.secret_key}"
+        )
 
     async def connect(self) -> None:
-        """Create a new connection and, optionally, start the monitor."""
+        """Connect to the websocket server."""
         _LOGGER.debug("websocket.connect() called")
-        await cancel_task(self._receiver_task)
+
         if self.connected:
             _LOGGER.debug("Websocket already connected")
             return
@@ -79,108 +81,125 @@ class SwidgetWebsocket:
         if not self.session:
             raise ConnectionError("No aiohttp session available")
 
+        headers = {"Connection": "Upgrade", self.token_name: self.secret_key}
+
         try:
-            _LOGGER.debug("Trying to connect")
+            _LOGGER.debug(f"Trying to connect to {self.host}")
             self._client = await self.session.ws_connect(
                 url=self.uri,
-                headers=self.headers,
+                headers=headers,
                 verify_ssl=self._verify_ssl,
                 heartbeat=30,
             )
+            self.retry_count = 0
             _LOGGER.debug("Websocket now connected")
-        except aiohttp.WSServerHandshakeError as handshake_error:
-            _LOGGER.error(
-                f"Error occurred during websocket handshake: {handshake_error}"
-            )
-            raise
-        except aiohttp.ClientConnectionError as connection_error:
-            _LOGGER.error(
-                f"Error connecting to the websocket server: {connection_error}"
-            )
-            raise
-        except socket.gaierror as gai_error:
-            _LOGGER.error(f"Error resolving host: {gai_error}")
-            raise
+        except (ClientConnectionError, WSServerHandshakeError) as e:
+            _LOGGER.error(f"Error connecting to websocket: {e}")
+            self._client = None
+        except socket.gaierror as e:
+            _LOGGER.error(f"Error resolving host: {e}")
+            self._client = None
         except Exception as e:
             _LOGGER.error(f"An unexpected error occurred: {e}")
-            raise
-        self._receiver_task = asyncio.ensure_future(self.listen())
+            self._client = None
 
-    async def close(self) -> None:
-        """Close the websocket."""
+    async def send_str(self, message: str) -> None:
+        """Send a string message through the websocket with retry attempts."""
+        _LOGGER.debug("websocket.send_str() called")
+        max_send_retries = 3
+        for attempt in range(max_send_retries):
+            try:
+                if self._client is not None:
+                    await self._client.send_str(message)
+                    return
+                else:
+                    _LOGGER.warning("Websocket is not connected, not sending")
+                    return
+            except Exception as e:
+                _LOGGER.warning(
+                    f"Error sending message, attempt {attempt}/{max_send_retries}: {e}"
+                )
+                if attempt < max_send_retries - 1:
+                    await asyncio.sleep(5**attempt)
+                else:
+                    _LOGGER.error(
+                        f"Failed to send message after {max_send_retries} attempts."
+                    )
+
+    async def receive(self):
+        """Receive a message from the WebSocket server."""
+        _LOGGER.debug("websocket.receive() called")
+        try:
+            if self._client is not None:
+                message = await self._client.receive()
+                if message.type == WSMsgType.TEXT:
+                    message_data = message.json()
+                    _LOGGER.debug(f"[{self.host}] Received message: {message_data}")
+                    return message_data
+                elif message.type == WSMsgType.CLOSED:
+                    _LOGGER.error("Websocket client is closed")
+                    self._client = None
+                elif message.type == WSMsgType.ERROR:
+                    _LOGGER.error("WebSocket error.")
+                    self._client = None
+        except Exception as e:
+            _LOGGER.error(f"Error receiving message: {e}")
+
+    async def close(self):
+        """Close the WebSocket connection."""
         _LOGGER.debug("websocket.close() called")
-        if self._client is not None and not self._client.closed:
+        self.is_running = False
+        self._closing = True
+        if self._client is not None:
             await self._client.close()
         self._client = None
+        if self.session and not self.session.closed:
+            await self.session.close()
 
-    async def disconnect(self) -> None:
-        """Wrapper of the close() function."""
-        await self.close()
+    async def reconnect(self):
+        """Reconnect to the WebSocket server after a delay."""
+        _LOGGER.debug("websocket.reconnect() called")
+        if self.max_retries is not None and self.retry_count >= self.max_retries:
+            _LOGGER.warning("Max retries reached. Stopping reconnect attempts.")
+            self.is_running = False
+            return
 
-    async def send_str(self, message):
-        """Send a message through the websocket."""
-        _LOGGER.debug("websocket.send_str() called")
-        if not self.connected:
-            raise ConnectionError
-        message = str(message)
-        _LOGGER.debug(f"Sending messsage over websocket: {message}")
-        await self._client.send_str(f"{message}")
+        self.retry_count += 1
+        delay = self.retry_interval * (2 ** (self.retry_count - 1))
+        _LOGGER.warning(
+            f"Reconnecting in {delay} seconds (attempt {self.retry_count})..."
+        )
+        await asyncio.sleep(delay)
+        await self.connect()
 
-    async def listen(self):
-        """Ask the client to listen to websocket events."""
-        _LOGGER.debug("websocket.listen() called")
-        # Check if the websocket is connected
-        if not self._client or not self.connected:
-            _LOGGER.error("Websocket is not connected")
-            raise ConnectionError("Websocket is not connected")
+    async def run(self):
+        """Run the WebSocket client to handle messages and reconnections."""
+        while self.is_running:
+            if self._client is None:
+                await self.reconnect()
+            if self._client is not None:
+                message = await self.receive()
+                if message and self.callback:
+                    if asyncio.iscoroutinefunction(self.callback):
+                        await self.callback(message)
+                    else:
+                        self.callback(message)
 
-        while not self._client.closed:
-            try:
-                message = await self._client.receive()
-            except StopAsyncIteration:
-                break
+    def status(self) -> dict:
+        """Return the current status of the websocket connection."""
+        _LOGGER.debug("websocket.status() called")
+        return {
+            "host": self.host,
+            "connected": self._client is not None,
+            "closing": self._closing,
+            "retry_interval": self.retry_interval,
+            "max_retries": self.max_retries,
+        }
 
-            if message.type == aiohttp.WSMsgType.ERROR:
-                raise ConnectionError("Websocket error occurred")
-
-            if message.type == aiohttp.WSMsgType.TEXT:
-                message_data = message.json()
-                _LOGGER.debug(f"Received from websocket: {message_data}")
-                await self.callback(message_data)
-
-            if message.type in (
-                aiohttp.WSMsgType.CLOSE,
-                aiohttp.WSMsgType.CLOSED,
-                aiohttp.WSMsgType.CLOSING,
-            ):
-                _LOGGER.error("Connection to the Swidget WebSocket has been closed")
-                break
-
-        self._client = None  # Ensure client is set to None when closed
-
-    async def receive_message_or_raise(self) -> Any:
-        """Receive ONE (raw) message or raise."""
-        assert self._client
-        ws_msg = await self._client.receive()
-
-        if ws_msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.CLOSING):
-            raise ConnectionError("Connection was closed.")
-
-        if ws_msg.type == WSMsgType.ERROR:
-            raise ConnectionError
-
-        if ws_msg.type != WSMsgType.TEXT:
-            raise ValueError(f"Received non-Text message: {ws_msg.type}: {ws_msg.data}")
-
-        try:
-            msg = ws_msg.json()
-        except TypeError as err:
-            raise TypeError(f"Received unsupported JSON: {err}") from err
-        except ValueError as err:
-            raise ValueError("Received invalid JSON.") from err
-
-        _LOGGER.debug(f"Received message:\n{msg}\n")
-        return msg
+    @property
+    def connected(self) -> bool:
+        """Return the status of the connection."""
+        return self._client is not None and not self._client.closed
 
     def __repr__(self) -> str:
         """Return the representation."""

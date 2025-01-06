@@ -115,10 +115,10 @@ class SwidgetDevice:
     async def start(self) -> None:
         """Start the websocket."""
         _LOGGER.debug("SwidgetDevice.start()")
-        if self.use_websockets:
+        if self.use_websockets and not self.connected:
             _LOGGER.debug("Calling self._websocket.connect()")
             await self._websocket.connect()
-        _LOGGER.debug("Calling self.update() ")
+        _LOGGER.debug("Calling self.update()")
         await self.update()
 
     async def stop(self) -> bool:
@@ -147,7 +147,7 @@ class SwidgetDevice:
         """Register a function to be called when a new websocket message is recieved."""
         for c in self._subscribers:
             if c == callback:
-                _LOGGER.warn(
+                _LOGGER.warning(
                     "Callback has already been added, not adding the same callback function again"
                 )
                 return False
@@ -190,20 +190,14 @@ class SwidgetDevice:
     async def get_device_config(self) -> Any:
         """Get the config of the device."""
         _LOGGER.debug("SwidgetDevice.get_device_config() called")
-        if self.use_websockets:
-            _LOGGER.debug(
-                "In websocket mode. Sending get_summary() command over websocket"
-            )
-            raise NotImplementedError
-        else:
-            _LOGGER.debug("In http mode. Sending get_summary() command over http")
-            async with self._session.get(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/device_config",
-                ssl=False,
-            ) as response:
-                config = await response.json()
-            self.device_config = DeviceConfiguration(config)
-            self._last_update = int(time.time())
+        _LOGGER.debug("Sending get_summary() command over http")
+        async with self._session.get(
+            url=f"{self.uri_scheme}://{self.ip_address}/api/v1/device_config",
+            ssl=False,
+        ) as response:
+            config = await response.json()
+        self.device_config = DeviceConfiguration(config)
+        self._last_update = int(time.time())
 
     async def get_summary(self) -> None:
         """Get a summary of the device over HTTP."""
@@ -325,7 +319,7 @@ class SwidgetDevice:
         _LOGGER.debug("SwidgetDevice.send_command() called")
         data = {assembly: {"components": {component: {function: command}}}}
         _LOGGER.debug(f"Command to send: {data}")
-        if self.use_websockets:
+        if self.use_websockets and self.connected is True:
             _LOGGER.debug("In websocket mode. Sending command over websocket")
             command_data = json.dumps(
                 {"type": "command", "request_id": "command", "payload": data}
@@ -653,12 +647,12 @@ class SwidgetDevice:
         """Return  True if the device is dimmable."""
         return self.is_dimmer
 
-    @property  # type: ignore
+    @property
     def friendly_name(self) -> str:
         """Return a friendly description of the device."""
         return self._friendly_name
 
-    @property  # type: ignore
+    @property
     def is_on(self) -> bool:
         """Return whether device is on."""
         _LOGGER.debug("SwidgetDevice.is_on called")
@@ -703,7 +697,7 @@ class SwidgetDevice:
             command={"state": "off"},
         )
 
-    @property  # type: ignore
+    @property
     def usb_is_on(self) -> bool:
         """Return whether USB is on."""
         _LOGGER.debug("SwidgetDevice.usb_is_on called")

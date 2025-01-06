@@ -4,7 +4,7 @@ import logging
 
 import asyncclick as click
 
-from swidget import DeviceType, SwidgetDimmer
+from swidget import DeviceType, InsertType, SwidgetDimmer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,9 +53,9 @@ async def test_dimmer(host, password, use_https, use_websockets):
         assert dev.use_websockets == use_websockets
         if use_websockets is True:
             await dev.start()
+            asyncio.create_task(dev.get_websocket().run())
         await dev.update()
-        await asyncio.sleep(10)
-
+        await asyncio.sleep(5)
         assert dev._friendly_name == "SFO-BATHROOM-SWIDGET-DIMMER"
         assert dev.device_type == DeviceType.Dimmer
         assert dev.version == "1.5.27"
@@ -68,7 +68,7 @@ async def test_dimmer(host, password, use_https, use_websockets):
         assert dev.host_features == ["power", "level", "toggle"]
         assert dev.mac_address == "24a16074d25c"
         assert dev.model == "HK_PICO_1"
-        assert dev.insert_type == "TEMP HUMI MOTION"
+        assert dev.insert_type == InsertType.THM
 
         assert await dev.blink() == {"blink": True}
         assert await dev.ping() is True
