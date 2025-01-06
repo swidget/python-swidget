@@ -108,9 +108,8 @@ async def discover_single(
 
     _LOGGER.debug(f"Creating new device class of type: {device_type}")
     device_class = _get_device_class(device_type)
-    _LOGGER.debug(f"{device_class}")
+    _LOGGER.debug(f"{device_class} created")
     dev = device_class(host, token_name, password, use_https, use_websockets)
-    await dev.start()
     return dev
 
 

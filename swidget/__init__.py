@@ -19,6 +19,7 @@ from swidget.exceptions import SwidgetException
 from swidget.provision import provision_wifi
 from swidget.swidgetdevice import (
     DeviceType,
+    InsertType,
     SwidgetAssembly,
     SwidgetComponent,
     SwidgetDevice,
@@ -38,6 +39,7 @@ __all__ = [
     "SwidgetDiscoveredDevice",
     "SwidgetException",
     "DeviceType",
+    "InsertType",
     "SwidgetAssembly",
     "SwidgetDevice",
     "SwidgetComponent",

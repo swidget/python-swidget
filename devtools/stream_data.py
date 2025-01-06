@@ -1,4 +1,5 @@
 """A simple utility to stream websocket data from Swidget devices."""
+import asyncio
 import json
 import logging
 
@@ -28,14 +29,24 @@ async def cli(host, password, debug):
         session=_session,
         callback=print_message,
     )
+
+    print("Attempting to connect...")
     try:
-        print("Attempting to connect...")
         await websocket.connect()
+        print("Connected")
+        asyncio.create_task(websocket.run())
         print("Now listening...")
-        await websocket.listen()
-    except Exception:
-        print("Error: Unable to connect to Swidget device")
+        while True:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        # Handle task cancellation gracefully
+        print("Shutting down...")
+    except Exception as e:
+        logging.error("An error occurred: %s", e)
+    finally:
         await websocket.close()
+        # await _session.close()
+        print("Cleanup complete. Exiting.")
 
 
 async def print_message(message):
