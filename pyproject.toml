@@ -20,7 +20,7 @@ aiohttp = ">=3.8.1"
 anyio = "*"  # see https://github.com/python-trio/asyncclick/issues/18
 importlib-metadata = "*"
 asyncclick = ">=8"
-pydantic = "^1"
+pydantic = "^2"
 ssdp = "1.1.1"
 requests = "2.32.3"
 types-requests = "2.31.0.6"

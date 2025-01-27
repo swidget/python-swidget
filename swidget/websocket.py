@@ -93,8 +93,8 @@ class SwidgetWebsocket:
             )
             self.retry_count = 0
             _LOGGER.debug("Websocket now connected")
-        except (ClientConnectionError, WSServerHandshakeError) as e:
-            _LOGGER.error(f"Error connecting to websocket: {e}")
+        except (ClientConnectionError, WSServerHandshakeError):
+            _LOGGER.error("Error connecting to websocket")
             self._client = None
         except socket.gaierror as e:
             _LOGGER.error(f"Error resolving host: {e}")
