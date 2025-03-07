@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from enum import Enum
 from types import TracebackType
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from aiohttp import ClientSession, TCPConnector
 
@@ -98,11 +98,11 @@ class SwidgetDevice:
         """Property to represent if the client is connected to the device."""
         return self._websocket.connected
 
-    def get_websocket(self) -> SwidgetWebsocket | None:
+    def get_websocket(self) -> Optional[SwidgetWebsocket]:
         """Return the SwidgetWebsocket class instance if possible."""
         if self.use_websockets:
             return self._websocket
-        return None
+        raise RuntimeError("Swidget instance is not configured to use websockets")
 
     def set_countdown_timer(self, minutes) -> Any:
         """Set the countdown timer."""

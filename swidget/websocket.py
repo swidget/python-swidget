@@ -27,7 +27,7 @@ class SwidgetWebsocket:
         session: aiohttp.ClientSession | None = None,
         use_security: bool = True,
         retry_interval: int = 30,  # Initial retry interval in seconds
-        max_retries: int = 200,  # Maximum number of reconnection attempts
+        max_retries: int | None = None,  # Maximum number of reconnection attempts
     ):
         """Initialize the SwidgetWebsocket.
 
@@ -167,7 +167,7 @@ class SwidgetWebsocket:
         self.retry_count += 1
         delay = self.retry_interval * (2 ** (self.retry_count - 1))
         _LOGGER.warning(
-            f"Reconnecting in {delay} seconds (attempt {self.retry_count})..."
+            f"Reconnecting to Swidget device: {self.host} in {delay} seconds (attempt {self.retry_count})..."
         )
         await asyncio.sleep(delay)
         await self.connect()
