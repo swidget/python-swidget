@@ -31,12 +31,14 @@ class SwidgetDiscoveredDevice:
         host_type: str,
         insert_type: str,
         friendly_name: str = "Swidget Discovered Device",
+        host_id: str = "",
     ):
         self.mac = mac
         self.host = host
         self.friendly_name = friendly_name
         self.host_type = host_type
         self.insert_type = insert_type
+        self.host_id = host_id
 
 
 class SwidgetProtocol(ssdp.SimpleServiceDiscoveryProtocol):

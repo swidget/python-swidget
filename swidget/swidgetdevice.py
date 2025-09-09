@@ -37,6 +37,8 @@ class InsertType(Enum):
     GL = "GUIDE LIGHT"
     PO = "POWER OUT"
     VIDEO = "video"  # This is not a mistake.
+    USBC = "USBC"
+    WD = "WATER DETECTOR"
     Unknown = -1
 
 
@@ -277,7 +279,7 @@ class SwidgetDevice:
         try:
             self.rssi = state["connection"]["rssi"]
         except Exception:
-            pass
+            self.rssi = 0
         for assembly in self.assemblies:
             for id, component in self.assemblies[assembly].components.items():
                 try:
@@ -544,6 +546,10 @@ class SwidgetDevice:
                 pass
             elif function == "sd":
                 return_values[function] = data["state"]
+            elif function == "water":
+                return_values[function] = data["state"]
+            elif function == "buzzer":
+                return_values[function] = data["mode"]
             else:
                 return_values[function] = data["now"]
         return return_values

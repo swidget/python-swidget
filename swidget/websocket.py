@@ -94,13 +94,13 @@ class SwidgetWebsocket:
             self.retry_count = 0
             _LOGGER.debug("Websocket now connected")
         except (ClientConnectionError, WSServerHandshakeError):
-            _LOGGER.error("Error connecting to websocket")
+            _LOGGER.exception("Error connecting to websocket")
             self._client = None
         except socket.gaierror as e:
             _LOGGER.error(f"Error resolving host: {e}")
             self._client = None
-        except Exception as e:
-            _LOGGER.error(f"An unexpected error occurred: {e}")
+        except Exception:
+            _LOGGER.exception("An unexpected error occurred.")
             self._client = None
 
     async def send_str(self, message: str) -> None:
@@ -126,7 +126,7 @@ class SwidgetWebsocket:
                         f"Failed to send message after {max_send_retries} attempts."
                     )
 
-    async def receive(self):
+    async def receive(self) -> Any | None:
         """Receive a message from the WebSocket server."""
         _LOGGER.debug("websocket.receive() called")
         try:
@@ -136,16 +136,17 @@ class SwidgetWebsocket:
                     message_data = message.json()
                     _LOGGER.debug(f"[{self.host}] Received message: {message_data}")
                     return message_data
-                elif message.type == WSMsgType.CLOSED:
-                    _LOGGER.error("Websocket client is closed")
+                elif message.type in (WSMsgType.CLOSED, WSMsgType.CLOSING):
+                    _LOGGER.error("Websocket connection is closed")
                     self._client = None
                 elif message.type == WSMsgType.ERROR:
                     _LOGGER.error("WebSocket error.")
                     self._client = None
         except Exception as e:
             _LOGGER.error(f"Error receiving message: {e}")
+        return None
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the WebSocket connection."""
         _LOGGER.debug("websocket.close() called")
         self.is_running = False
@@ -156,15 +157,17 @@ class SwidgetWebsocket:
         if self.session and not self.session.closed:
             await self.session.close()
 
-    async def reconnect(self):
-        """Reconnect to the WebSocket server after a delay."""
+    async def reconnect(self) -> None:
+        """Attempt to reconnect to the WebSocket server, raising on failure."""
         _LOGGER.debug("websocket.reconnect() called")
         if self.max_retries is not None and self.retry_count >= self.max_retries:
-            _LOGGER.warning("Max retries reached. Stopping reconnect attempts.")
-            self.is_running = False
-            return
+            _LOGGER.error("Max retries reached. Stopping reconnect attempts.")
+            raise ConnectionError(
+                f"Max retries reached. Could not connect to {self.host}"
+            )
 
         self.retry_count += 1
+        # Implement exponential backoff for reconnection delay
         delay = self.retry_interval * (2 ** (self.retry_count - 1))
         _LOGGER.warning(
             f"Reconnecting to Swidget device: {self.host} in {delay} seconds (attempt {self.retry_count})..."
@@ -172,7 +175,7 @@ class SwidgetWebsocket:
         await asyncio.sleep(delay)
         await self.connect()
 
-    async def run(self):
+    async def run(self) -> None:
         """Run the WebSocket client to handle messages and reconnections."""
         while self.is_running:
             if self._client is None:
