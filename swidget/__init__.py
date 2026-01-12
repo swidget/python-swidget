@@ -12,7 +12,7 @@ Module-specific errors are raised as `SwidgetException` and are expected
 to be handled by the user of the library.
 """
 
-from importlib_metadata import version  # type: ignore
+from importlib_metadata import version
 
 from swidget.discovery import SwidgetDiscoveredDevice, discover_devices, discover_single
 from swidget.exceptions import SwidgetException

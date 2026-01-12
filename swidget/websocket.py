@@ -26,6 +26,7 @@ class SwidgetWebsocket:
         callback: Union[Callable[[Any], None], Callable[[Any], Awaitable[None]]],
         session: aiohttp.ClientSession | None = None,
         use_security: bool = True,
+        verify_ssl: bool = False,
         retry_interval: int = 30,  # Initial retry interval in seconds
         max_retries: int | None = None,  # Maximum number of reconnection attempts
     ):
@@ -38,6 +39,7 @@ class SwidgetWebsocket:
             callback: A callable that will be called with received messages.
             session: An optional aiohttp.ClientSession to use.
             use_security: Whether to use wss:// (True) or ws:// (False).
+            verify_ssl: Whether to verify TLS when using wss://.
             retry_interval: Initial interval for reconnection attempts.
             max_retries: Maximum number of reconnection attempts.
         """
@@ -46,18 +48,18 @@ class SwidgetWebsocket:
         self.secret_key = secret_key or ""
         self.session = session or aiohttp.ClientSession()
         self.use_security = use_security
+        self._verify_ssl = verify_ssl
         self.callback = callback
         self.retry_interval = retry_interval
         self.max_retries = max_retries
         self.retry_count = 0
-        self._verify_ssl = False
         self.uri = self._get_uri()
 
         # self._client= None
         self.is_running = True
         self._closing = False
         self._client: ClientWebSocketResponse | None = None
-        self._receiver_task: asyncio.Task | None = None
+        self._receiver_task: asyncio.Task[Any] | None = None
         self._closing = False
 
     def _get_uri(self) -> str:
@@ -188,7 +190,7 @@ class SwidgetWebsocket:
                     else:
                         self.callback(message)
 
-    def status(self) -> dict:
+    def status(self) -> dict[str, Any]:
         """Return the current status of the websocket connection."""
         _LOGGER.debug("websocket.status() called")
         return {

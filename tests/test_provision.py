@@ -21,7 +21,6 @@ def test_send_credentials_success(mock_post):
     assert key == "dummy_secret_key"
 
 
-# This works
 @patch("swidget.provision.requests.post")
 def test_send_credentials_failure(mock_post):
     """Test the successful send of WiFi credentials."""
@@ -39,9 +38,9 @@ def test_send_credentials_failure(mock_post):
     assert key is None
 
 
-# Does not work
+@patch("swidget.provision.time.sleep", return_value=None)
 @patch("swidget.provision.requests.get")
-def test_verify_connect_result_success(mock_get):
+def test_verify_connect_result_success(mock_get, mock_sleep):
     """Test successful provision."""
     mock_get.return_value.status_code = 200
     mock_get.return_value.json.return_value = {
@@ -60,9 +59,9 @@ def test_verify_connect_result_success(mock_get):
     assert error_message is None
 
 
-# THis works
+@patch("swidget.provision.time.sleep", return_value=None)
 @patch("swidget.provision.requests.get")
-def test_verify_connect_result_failure(mock_get):
+def test_verify_connect_result_failure(mock_get, mock_sleep):
     """Test failed provision."""
     mock_get.return_value.status_code = 500
     mock_get.return_value.json.return_value = {"error": "Internal server error"}
@@ -77,9 +76,9 @@ def test_verify_connect_result_failure(mock_get):
     assert error_message == "Internal server error"
 
 
-@patch("time.sleep", return_value=None)
-@patch("requests.get")
-@patch("requests.post")
+@patch("swidget.provision.time.sleep", return_value=None)
+@patch("swidget.provision.requests.get")
+@patch("swidget.provision.requests.post")
 def test_provision_wifi_success(mock_post, mock_get, mock_sleep):
     """Test extended provision."""
     mock_post.return_value.status_code = 200
@@ -126,10 +125,10 @@ def test_provision_wifi_success(mock_post, mock_get, mock_sleep):
     assert provision_wifi(device_name, ssid, network_password, secret_key) is True
 
 
-# THis works
+@patch("swidget.provision.time.sleep", return_value=None)
 @patch("swidget.provision.requests.get")
 @patch("swidget.provision.requests.post")
-def test_provision_wifi_failure(mock_post, mock_get):
+def test_provision_wifi_failure(mock_post, mock_get, mock_sleep):
     """Test failed provision."""
     mock_post.return_value.status_code = 200
     mock_post.return_value.json.return_value = {"secretKey": "dummy_secret_key"}

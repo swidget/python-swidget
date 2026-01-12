@@ -9,8 +9,13 @@ from types import TracebackType
 from typing import Any, Dict, List, Optional
 
 from aiohttp import ClientSession, TCPConnector
+from aiohttp.client_exceptions import ClientConnectorError
 
-from .exceptions import SwidgetException
+from .exceptions import (
+    SwidgetAuthenticationException,
+    SwidgetConnectionException,
+    SwidgetException,
+)
 from .websocket import SwidgetWebsocket
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,10 +68,16 @@ class SelfDiagnosticErrorCodes(Enum):
 
 
 class SwidgetDevice:
-    """Class to represent the Swidge device."""
+    """Core representation of a Swidget device (base class for all device types)."""
 
     def __init__(
-        self, host, token_name, secret_key, use_https=True, use_websockets=True
+        self,
+        host,
+        token_name,
+        secret_key,
+        use_https=True,
+        use_websockets=True,
+        verify_ssl: bool = False,
     ) -> None:
         self.token_name = token_name
         self.ip_address = host
@@ -74,13 +85,16 @@ class SwidgetDevice:
         self.uri_scheme = "https" if self.use_https is True else "http"
         self.secret_key = secret_key
         self.use_websockets = use_websockets
+        self.verify_ssl = verify_ssl
         self.device_type = DeviceType.Unknown
         self._friendly_name = "Unknown Swidget Device"
         self.assemblies: Dict[Any, Any] = dict()
         self.device_config: DeviceConfiguration = DeviceConfiguration({})
         self._subscribers: List[Any] = list()
         headers = {self.token_name: self.secret_key, "Connection": "keep-alive"}
-        connector = TCPConnector(verify_ssl=False, force_close=True)
+        # aiohttp recommends using ssl context; verify_ssl is deprecated.
+        ssl_flag = verify_ssl if use_https else False
+        connector = TCPConnector(ssl=ssl_flag, force_close=True)
         if use_https is True:
             self._session = ClientSession(headers=headers, connector=connector)
         else:
@@ -93,12 +107,14 @@ class SwidgetDevice:
                 secret_key=self.secret_key,
                 callback=self.message_callback,
                 session=self._session,
+                use_security=self.use_https,
+                verify_ssl=verify_ssl,
             )
 
     @property
     def connected(self) -> bool:
         """Property to represent if the client is connected to the device."""
-        return self._websocket.connected
+        return hasattr(self, "_websocket") and self._websocket.connected
 
     def get_websocket(self) -> Optional[SwidgetWebsocket]:
         """Return the SwidgetWebsocket class instance if possible."""
@@ -189,15 +205,66 @@ class SwidgetDevice:
         for callback in self._subscribers:
             await callback(message)
 
+    async def make_http_request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Make a generic HTTP request to a specified device endpoint.
+
+        Args:
+            method: The HTTP method to use (e.g., "GET", "POST").
+            endpoint: The API endpoint to request (e.g., "summary", "state").
+            params: Optional dictionary of URL query parameters.
+            json_payload: Optional dictionary to send as a JSON request body.
+
+        Returns:
+            The JSON response from the device as a dictionary.
+
+        Raises:
+            SwidgetConnectionException: If there is a problem connecting.
+            SwidgetAuthenticationException: If the device returns a 403 error.
+            ValueError: If an unsupported HTTP method is provided.
+        """
+        http_method = method.upper()
+        if http_method not in ("GET", "POST"):
+            raise ValueError(f"Unsupported HTTP method: {http_method}")
+
+        url = f"{self.uri_scheme}://{self.ip_address}/api/v1/{endpoint}"
+        _LOGGER.debug(f"Sending {http_method} request to: {url}")
+
+        try:
+            async with self._session.request(
+                method=http_method,
+                url=url,
+                params=params,
+                json=json_payload,
+                ssl=self.verify_ssl if self.use_https else False,
+            ) as response:
+                if response.status == 200:
+                    if response.content_length == 0:
+                        return {}
+                    return await response.json()
+                elif response.status == 403:
+                    _LOGGER.error(
+                        f"Authentication failed for {http_method} '{endpoint}'"
+                    )
+                    raise SwidgetAuthenticationException
+                else:
+                    response.raise_for_status()
+                return {}
+        except ClientConnectorError as e:
+            _LOGGER.error(f"Connection error while requesting '{endpoint}': {e}")
+            raise SwidgetConnectionException from e
+
     async def get_device_config(self) -> Any:
         """Get the config of the device."""
         _LOGGER.debug("SwidgetDevice.get_device_config() called")
         _LOGGER.debug("Sending get_summary() command over http")
-        async with self._session.get(
-            url=f"{self.uri_scheme}://{self.ip_address}/api/v1/device_config",
-            ssl=False,
-        ) as response:
-            config = await response.json()
+        config = await self.make_http_request("GET", "device_config")
         self.device_config = DeviceConfiguration(config)
         self._last_update = int(time.time())
 
@@ -213,10 +280,7 @@ class SwidgetDevice:
             )
         else:
             _LOGGER.debug("In http mode. Sending get_summary() command over http")
-            async with self._session.get(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/summary", ssl=False
-            ) as response:
-                summary = await response.json()
+            summary = await self.make_http_request("GET", "summary")
             await self.process_summary(summary)
 
     async def process_summary(self, summary) -> None:
@@ -239,10 +303,7 @@ class SwidgetDevice:
         """Retrieve the friendly name of the device."""
         _LOGGER.debug("SwidgetDevice.get_friendly_name() called")
         try:
-            async with self._session.get(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/name", ssl=False
-            ) as response:
-                name = await response.json()
+            name = await self.make_http_request("GET", "name")
         except Exception:
             name = {"name": f"Swidget {self.device_type} w/{self.insert_type} insert"}
         await self.process_friendly_name(name["name"])
@@ -258,18 +319,14 @@ class SwidgetDevice:
         _LOGGER.debug("SwidgetDevice.get_state() called")
         if self.use_websockets:
             _LOGGER.debug(
-                "In websocket mode. Sending get_summary() command over websocket"
+                "In websocket mode. Sending get_state() command over websocket"
             )
             await self._websocket.send_str(
                 json.dumps({"type": "state", "request_id": "state"})
             )
         else:
-            _LOGGER.debug("In http mode. Sending get_summary() command over http")
-            async with self._session.get(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/state", ssl=False
-            ) as response:
-                state = await response.json()
-            await self.process_state(state)
+            _LOGGER.debug("In http mode. Sending get_state() command over http")
+            await self.make_http_request("GET", "state")
 
     async def process_state(self, state) -> None:
         """Process any information about the state of the device or insert."""
@@ -297,7 +354,7 @@ class SwidgetDevice:
             await self.get_state()
             if self._friendly_name == "Unknown Swidget Device":
                 await self.get_friendly_name()
-            if self.device_config == {}:
+            if not self.device_config.config_populated():
                 await self.get_device_config()
         elif (int(time.time()) - self._last_update) < 5:
             _LOGGER.debug("update() recently called, not executing")
@@ -309,10 +366,18 @@ class SwidgetDevice:
     async def send_config(self, payload: dict) -> None:
         """Send a config block to the device."""
         _LOGGER.debug("SwidgetDevice.send_config() called")
-        data = json.dumps(
-            {"type": "config", "request_id": "send_config", "payload": payload}
-        )
-        await self._websocket.send_str(data)
+        if self.use_websockets:
+            _LOGGER.debug(
+                "In websocket mode. Sending send_config() command over websocket"
+            )
+            data = json.dumps(
+                {"type": "config", "request_id": "send_config", "payload": payload}
+            )
+            await self._websocket.send_str(data)
+        else:
+            raise SwidgetException(
+                "Configuration management is not available via websocket."
+            )
 
     async def send_command(
         self, assembly: str, component: str, function: str, command: dict
@@ -329,16 +394,19 @@ class SwidgetDevice:
             await self._websocket.send_str(command_data)
         else:
             _LOGGER.debug("NOT in websocket mode, sending command over HTTP")
-            async with self._session.post(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/command",
-                ssl=False,
-                data=json.dumps(data),
-            ) as response:
-                state = await response.json()
-
-            # Do a hard set of the new state of the device. May change this in the future
-            function_value = state[assembly]["components"][component][function]
-            self.assemblies[assembly].components[component].functions[function] = function_value  # fmt: skip
+            response = await self.make_http_request(
+                "POST", "command", json_payload=data
+            )
+            if response:
+                try:
+                    function_value = response[assembly]["components"][component][
+                        function
+                    ]
+                    self.assemblies[assembly].components[component].functions[
+                        function
+                    ] = function_value
+                except Exception:
+                    _LOGGER.debug("Command response did not include state update")
 
     async def ping(self) -> bool:
         """Ping the device to ensure it's devices.
@@ -347,12 +415,8 @@ class SwidgetDevice:
         """
         _LOGGER.debug("SwidgetDevice.ping() called")
         try:
-            async with self._session.get(
-                url=f"{self.uri_scheme}://{self.ip_address}/ping", ssl=False
-            ) as response:
-                if response.status == 200:
-                    return True
-                return False
+            response = await self.make_http_request("GET", "ping")
+            return True if response == {} else bool(response)
         except Exception:
             return False
 
@@ -362,13 +426,15 @@ class SwidgetDevice:
         :raises SwidgetException: Raise the exception if there we are unable to connect to the Swidget device
         """
         _LOGGER.debug("SwidgetDevice.blink() called")
-        try:
-            async with self._session.get(
-                url=f"{self.uri_scheme}://{self.ip_address}/blink", ssl=False
-            ) as response:
-                return await response.json()
-        except Exception:
-            raise SwidgetException
+        return await self.make_http_request("GET", "blink")
+        # try:
+
+        #     async with self._session.get(
+        #         url=f"{self.uri_scheme}://{self.ip_address}/blink", ssl=False
+        #     ) as response:
+        #         return await response.json()
+        # except Exception:
+        #     raise SwidgetException
 
     async def enable_debug_server(self) -> Any:
         """Enable the Swidget local debug server.
@@ -376,30 +442,14 @@ class SwidgetDevice:
         :raises SwidgetException: Raise the exception if there we are unable to connect to the Swidget device
         """
         _LOGGER.debug("SwidgetDevice.enable_debug_server() called")
-        try:
-            async with self._session.get(
-                url=f"{self.uri_scheme}://{self.ip_address}/debug?x-secret-key={self.secret_key}",
-                ssl=False,
-            ) as response:
-                if response.status == 200:
-                    return True
-                return False
-        except Exception:
-            raise SwidgetException
+        return await self.make_http_request("GET", "debug")
 
     async def restart_device(self) -> Any:
         """Restart the Swidget device.
 
         :raises SwidgetException: Raise the exception if there we are unable to connect to the Swidget device
         """
-        try:
-
-            async with self._session.post(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/reset", ssl=False
-            ) as response:
-                return await response.json()
-        except Exception:
-            raise SwidgetException
+        return await self.make_http_request("POST", "reset")
 
     async def factory_reset(self) -> Any:
         """Factory reset the Swidget device.
@@ -421,12 +471,8 @@ class SwidgetDevice:
         :raises SwidgetException: Raise the exception if there we are unable to connect to the Swidget device
         """
         try:
-
-            async with self._session.get(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/update", ssl=False
-            ) as response:
-                newer_versions = await response.json()
-                return sorted(newer_versions["updates"])
+            newer_versions = await self.make_http_request("GET", "update")
+            return sorted(newer_versions["updates"])
         except Exception:
             raise SwidgetException
 
@@ -437,15 +483,10 @@ class SwidgetDevice:
         """
         try:
             data = {"version": version}
-            async with self._session.post(
-                url=f"{self.uri_scheme}://{self.ip_address}/api/v1/update/version",
-                ssl=False,
-                data=json.dumps(data),
-            ) as response:
-                result = response.status
-                if result == 200:
-                    return True
-                return False
+            response = await self.make_http_request(
+                "POST", "update/version", json_payload=data
+            )
+            return bool(response)
         except Exception:
             raise SwidgetException
 
@@ -758,7 +799,7 @@ class DeviceConfiguration:
 
     def config_populated(self) -> bool:
         """Return if configuration has been retrieved from the device."""
-        return self._config_dict == {}
+        return self._config_dict != {}
 
     @property
     def config(self):

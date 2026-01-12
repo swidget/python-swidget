@@ -29,8 +29,8 @@ class SwidgetTimerSwitch(SwidgetSwitch):
         self._device_type = DeviceType.TimerSwitch
 
     async def set_countdown_timer(self, minutes) -> Any:
-        """Set the countdown timer."""
-        _LOGGER.debug("SwidgetTimerSwitch.set_brightness() called")
+        """Set the countdown timer in minutes."""
+        _LOGGER.debug("SwidgetTimerSwitch.set_countdown_timer() called")
         await self.send_command(
             assembly="host",
             component="0",

@@ -27,7 +27,7 @@ class SwidgetDimmer(SwidgetDevice):
         )
         self.device_type = DeviceType.Dimmer
 
-    @property  # type: ignore
+    @property
     def brightness(self) -> int:
         """Return current brightness on dimmers.
 
@@ -66,7 +66,7 @@ class SwidgetDimmer(SwidgetDevice):
             command={"default": brightness},
         )
 
-    @property  # type: ignore
+    @property
     def is_dimmable(self) -> bool:
         """Whether the switch supports brightness changes."""
         _LOGGER.debug("SwidgetDimmer.is_dimmable() called")
