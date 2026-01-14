@@ -326,7 +326,8 @@ class SwidgetDevice:
             )
         else:
             _LOGGER.debug("In http mode. Sending get_state() command over http")
-            await self.make_http_request("GET", "state")
+            state = await self.make_http_request("GET", "state")
+            await self.process_state(state)
 
     async def process_state(self, state) -> None:
         """Process any information about the state of the device or insert."""
@@ -427,14 +428,6 @@ class SwidgetDevice:
         """
         _LOGGER.debug("SwidgetDevice.blink() called")
         return await self.make_http_request("GET", "blink")
-        # try:
-
-        #     async with self._session.get(
-        #         url=f"{self.uri_scheme}://{self.ip_address}/blink", ssl=False
-        #     ) as response:
-        #         return await response.json()
-        # except Exception:
-        #     raise SwidgetException
 
     async def enable_debug_server(self) -> Any:
         """Enable the Swidget local debug server.
