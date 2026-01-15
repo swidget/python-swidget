@@ -260,6 +260,52 @@ class SwidgetDevice:
             _LOGGER.error(f"Connection error while requesting '{endpoint}': {e}")
             raise SwidgetConnectionException from e
 
+    async def _make_passthrough_request(
+        self,
+        method: str,
+        path: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Send a request to endpoints that are not part of the /api/v1/ namespace."""
+        http_method = method.upper()
+        url = f"{self.uri_scheme}://{self.ip_address}/{path.lstrip('/')}"
+        request_params = dict(params or {})
+        if (
+            self.secret_key
+            and self.token_name
+            and self.token_name not in request_params
+        ):
+            request_params[self.token_name] = self.secret_key
+
+        _LOGGER.debug(
+            f"Sending {http_method} request to: {url} with params {request_params}"
+        )
+
+        try:
+            async with self._session.request(
+                method=http_method,
+                url=url,
+                params=request_params,
+                ssl=self.verify_ssl if self.use_https else False,
+            ) as response:
+                if response.status == 200:
+                    if response.content_length == 0:
+                        return {}
+                    content_type = response.headers.get("Content-Type", "").lower()
+                    if "application/json" in content_type:
+                        return await response.json()
+                    # Fallback: return text (e.g., ping returns plain "PONG")
+                    text_body = await response.text()
+                    try:
+                        return json.loads(text_body)
+                    except Exception:
+                        return text_body
+                response.raise_for_status()
+                return {}
+        except ClientConnectorError as e:
+            _LOGGER.error(f"Connection error while requesting '{path}': {e}")
+            raise SwidgetConnectionException from e
+
     async def get_device_config(self) -> Any:
         """Get the config of the device."""
         _LOGGER.debug("SwidgetDevice.get_device_config() called")
@@ -416,7 +462,8 @@ class SwidgetDevice:
         """
         _LOGGER.debug("SwidgetDevice.ping() called")
         try:
-            response = await self.make_http_request("GET", "ping")
+            response = await self._make_passthrough_request("GET", "ping")
+            _LOGGER.debug(f"Ping response: {response}")
             return True if response == {} else bool(response)
         except Exception:
             return False
@@ -427,7 +474,7 @@ class SwidgetDevice:
         :raises SwidgetException: Raise the exception if there we are unable to connect to the Swidget device
         """
         _LOGGER.debug("SwidgetDevice.blink() called")
-        return await self.make_http_request("GET", "blink")
+        return await self._make_passthrough_request("GET", "blink")
 
     async def enable_debug_server(self) -> Any:
         """Enable the Swidget local debug server.
