@@ -5,7 +5,7 @@ import socket
 from typing import Any, Type
 from urllib.parse import urlparse
 
-import ssdp  # type: ignore
+import ssdp
 
 from swidget.swidgetdevice import DeviceType, SwidgetDevice
 

@@ -236,10 +236,10 @@ async def ping(dev):
     click.echo("Pinging the device")
     try:
         result = await dev.ping()
-        if result == 200:
+        if result:
             click.echo("Successfully pinged device")
         else:
-            click.echo(result.status_code)
+            click.echo("Unable to ping device")
     except Exception:
         click.echo("Unable to ping device")
 

@@ -28,7 +28,7 @@ async def cli(host, password, debug):
     if debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    headers = {}
+    headers = {"x-secret-key": password}
     connector = TCPConnector(force_close=True)
     _session = ClientSession(headers=headers, connector=connector)
 
@@ -45,7 +45,7 @@ async def cli(host, password, debug):
 
         # Get State Info
         async with _session.get(
-            url=f"http://{host}/api/v1/state", ssl=False
+            url=f"https://{host}/api/v1/state", ssl=False
         ) as response:
             state = await response.json()
         click.echo(click.style("== State info ==", bold=True))
@@ -53,7 +53,7 @@ async def cli(host, password, debug):
 
         # Get Name Info
         async with _session.get(
-            url=f"http://{host}/api/v1/name", ssl=False
+            url=f"https://{host}/api/v1/name", ssl=False
         ) as response:
             name = await response.json()
         await _session.close()

@@ -28,7 +28,8 @@ sample_state = {
 }
 
 
-def test_initialization():
+@pytest.mark.asyncio
+async def test_initialization():
     """Test SwidgetDevice __init__() function."""
     device = SwidgetDevice(
         "127.0.0.1", "token_name", "secret_key", use_https=True, use_websockets=True
@@ -38,6 +39,7 @@ def test_initialization():
     assert device.secret_key == "secret_key"
     assert device.use_https is True
     assert device.use_websockets is True
+    await device.stop()
 
 
 @pytest.mark.asyncio
@@ -46,14 +48,17 @@ async def test_get_summary():
     device = SwidgetDevice(
         "127.0.0.1", "token_name", "secret_key", use_https=True, use_websockets=False
     )
-    with aioresponses() as m:
-        m.get("https://127.0.0.1/api/v1/summary", payload=sample_summary)
-        await device.get_summary()
-        assert device.model == "SwidgetModel"
-        assert device.mac_address == "00:11:22:33:44:55"
-        assert device.version == "1.0"
-        assert device.device_type == DeviceType.Switch
-        assert device.insert_type == InsertType.USB
+    try:
+        with aioresponses() as m:
+            m.get("https://127.0.0.1/api/v1/summary", payload=sample_summary)
+            await device.get_summary()
+            assert device.model == "SwidgetModel"
+            assert device.mac_address == "00:11:22:33:44:55"
+            assert device.version == "1.0"
+            assert device.device_type == DeviceType.Switch
+            assert device.insert_type == InsertType.USB
+    finally:
+        await device.stop()
 
 
 @pytest.fixture

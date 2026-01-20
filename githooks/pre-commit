@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v poetry >/dev/null 2>&1; then
+  RUNNER="poetry run"
+else
+  RUNNER=""
+fi
+
+echo "Running black --check ..."
+${RUNNER} black --check .
+
+echo "Running pytest with coverage ..."
+${RUNNER} pytest --cov=swidget --cov-report=term-missing
+
+echo "Running mypy --strict (swidget package) ..."
+${RUNNER} mypy --config-file mypy.ini
+
+echo "All checks passed."

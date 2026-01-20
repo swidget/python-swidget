@@ -1,4 +1,5 @@
 """Unit-tests for the Swidget discovery module."""
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,11 +27,20 @@ def mock_response_headers():
 async def test_discover_devices_empty(mocker):
     """Basic empty discovery test."""
     # Mock asyncio.sleep to avoid actual sleep during test
-    mocker.patch("asyncio.sleep")
+    mocker.patch("asyncio.sleep", new_callable=AsyncMock)
+
     # Mock ssdp.SimpleServiceDiscoveryProtocol methods
     protocol_mock = AsyncMock()
     protocol_mock.response_received = AsyncMock()
     mocker.patch("swidget.discovery.SwidgetProtocol", return_value=protocol_mock)
+
+    # Mock transport creation to avoid real sockets
+    dummy_transport = mocker.MagicMock()
+    mocker.patch.object(
+        asyncio.get_event_loop(),
+        "create_datagram_endpoint",
+        AsyncMock(return_value=(dummy_transport, protocol_mock)),
+    )
 
     # Run the discovery
     await discover_devices()
@@ -51,7 +61,7 @@ def test_get_device_class():
 
 
 @pytest.mark.asyncio
-@patch("swidget.swidgetdevice.SwidgetDevice", autospec=True)
+@patch("swidget.discovery.SwidgetDevice", autospec=True)
 async def test_discover_single_outlet(MockSwidgetDevice):
     """Test for basic manual discovery of an outlet device."""
     mock_device = MockSwidgetDevice.return_value
@@ -69,7 +79,7 @@ async def test_discover_single_outlet(MockSwidgetDevice):
 
 
 @pytest.mark.asyncio
-@patch("swidget.swidgetdevice.SwidgetDevice", autospec=True)
+@patch("swidget.discovery.SwidgetDevice", autospec=True)
 async def test_discover_single_switch(MockSwidgetDevice):
     """Test for basic manual discovery of a switch device."""
     mock_device = MockSwidgetDevice.return_value
@@ -87,7 +97,7 @@ async def test_discover_single_switch(MockSwidgetDevice):
 
 
 @pytest.mark.asyncio
-@patch("swidget.swidgetdevice.SwidgetDevice", autospec=True)
+@patch("swidget.discovery.SwidgetDevice", autospec=True)
 async def test_discover_single_dimmer(MockSwidgetDevice):
     """Test for basic manual discovery of a dimmer device."""
     mock_device = MockSwidgetDevice.return_value
@@ -105,7 +115,7 @@ async def test_discover_single_dimmer(MockSwidgetDevice):
 
 
 @pytest.mark.asyncio
-@patch("swidget.swidgetdevice.SwidgetDevice", autospec=True)
+@patch("swidget.discovery.SwidgetDevice", autospec=True)
 async def test_discover_single_timer_switch(MockSwidgetDevice):
     """Test for basic manual discovery of a timer device."""
     mock_device = MockSwidgetDevice.return_value
@@ -123,7 +133,7 @@ async def test_discover_single_timer_switch(MockSwidgetDevice):
 
 
 @pytest.mark.asyncio
-@patch("swidget.swidgetdevice.SwidgetDevice", autospec=True)
+@patch("swidget.discovery.SwidgetDevice", autospec=True)
 async def test_discover_single_unknown_device(MockSwidgetDevice):
     """Test for error condition when it's not possible to work out the type of device."""
     mock_device = MockSwidgetDevice.return_value

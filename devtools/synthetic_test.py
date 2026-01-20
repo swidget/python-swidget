@@ -56,7 +56,7 @@ async def test_dimmer(host, password, use_https, use_websockets):
             asyncio.create_task(dev.get_websocket().run())
         await dev.update()
         await asyncio.sleep(5)
-        assert dev._friendly_name == "SFO-BATHROOM-SWIDGET-DIMMER"
+        assert dev._friendly_name == "SFO-ENSUITE-SWIDGET-DIMMER"
         assert dev.device_type == DeviceType.Dimmer
         assert dev.version == "1.5.27"
         assert dev.is_outlet is False
@@ -66,11 +66,11 @@ async def test_dimmer(host, password, use_https, use_websockets):
         assert dev.is_dimmable is True
 
         assert dev.host_features == ["power", "level", "toggle"]
-        assert dev.mac_address == "24a16074d25c"
+        assert dev.mac_address == "94b97eb73168"
         assert dev.model == "HK_PICO_1"
         assert dev.insert_type == InsertType.THM
-
         assert await dev.blink() == {"blink": True}
+        print(await dev.ping())
         assert await dev.ping() is True
 
         await dev.turn_off()
