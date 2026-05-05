@@ -14,7 +14,12 @@ to be handled by the user of the library.
 
 from importlib_metadata import version
 
-from swidget.discovery import SwidgetDiscoveredDevice, discover_devices, discover_single
+from swidget.discovery import (
+    SwidgetDiscoveredDevice,
+    detect_secure,
+    discover_devices,
+    discover_single,
+)
 from swidget.exceptions import SwidgetException
 from swidget.provision import provision_wifi
 from swidget.swidgetdevice import (
@@ -33,6 +38,7 @@ __version__ = version("python-swidget")
 
 
 __all__ = [
+    "detect_secure",
     "discover_devices",
     "discover_single",
     "provision_wifi",

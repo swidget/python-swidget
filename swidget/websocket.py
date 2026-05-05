@@ -27,7 +27,7 @@ class SwidgetWebsocket:
         session: aiohttp.ClientSession | None = None,
         use_security: bool = True,
         verify_ssl: bool = False,
-        retry_interval: int = 30,  # Initial retry interval in seconds
+        retry_interval: int = 5,  # Initial retry interval in seconds
         max_retries: int | None = None,  # Maximum number of reconnection attempts
     ):
         """Initialize the SwidgetWebsocket.
@@ -106,27 +106,31 @@ class SwidgetWebsocket:
             self._client = None
 
     async def send_str(self, message: str) -> None:
-        """Send a string message through the websocket with retry attempts."""
-        _LOGGER.debug("websocket.send_str() called")
-        max_send_retries = 3
-        for attempt in range(max_send_retries):
-            try:
-                if self._client is not None:
-                    await self._client.send_str(message)
-                    return
-                else:
-                    _LOGGER.warning("Websocket is not connected, not sending")
-                    return
-            except Exception as e:
-                _LOGGER.warning(
-                    f"Error sending message, attempt {attempt}/{max_send_retries}: {e}"
-                )
-                if attempt < max_send_retries - 1:
-                    await asyncio.sleep(5**attempt)
-                else:
-                    _LOGGER.error(
-                        f"Failed to send message after {max_send_retries} attempts."
-                    )
+        """Send a string message through the websocket.
+
+        Drops the message (no retry) if the connection is missing or in
+        a closing state. Retrying against a closing transport just wastes
+        time — the right recovery is to invalidate the client so the
+        run() loop's reconnect kicks in on the next iteration.
+        """
+        _LOGGER.debug(f"[{self.host}] websocket.send_str: {message}")
+        if self._client is None or self._client.closed:
+            if self._client is not None:
+                # aiohttp says it's closed but we still hold a reference;
+                # clear it so run() reconnects on the next loop.
+                self._client = None
+            _LOGGER.warning(
+                f"[{self.host}] websocket not connected, dropping message"
+            )
+            return
+        try:
+            await self._client.send_str(message)
+        except Exception as e:
+            _LOGGER.warning(
+                f"[{self.host}] websocket send failed ({e}); invalidating client"
+            )
+            # Force the run() loop's reconnect path on the next iteration.
+            self._client = None
 
     async def receive(self) -> Any | None:
         """Receive a message from the WebSocket server."""
@@ -139,13 +143,24 @@ class SwidgetWebsocket:
                     _LOGGER.debug(f"[{self.host}] Received message: {message_data}")
                     return message_data
                 elif message.type in (WSMsgType.CLOSED, WSMsgType.CLOSING):
-                    _LOGGER.error("Websocket connection is closed")
+                    # message.data carries the close code (int) when present;
+                    # message.extra carries the reason string. close_code on
+                    # the client also reflects the final negotiated code.
+                    _LOGGER.error(
+                        f"[{self.host}] Websocket closed "
+                        f"(type={message.type.name}, "
+                        f"code={message.data!r}, "
+                        f"reason={message.extra!r}, "
+                        f"client.close_code={getattr(self._client, 'close_code', None)!r})"
+                    )
                     self._client = None
                 elif message.type == WSMsgType.ERROR:
-                    _LOGGER.error("WebSocket error.")
+                    _LOGGER.error(
+                        f"[{self.host}] Websocket error: {message.data!r}"
+                    )
                     self._client = None
         except Exception as e:
-            _LOGGER.error(f"Error receiving message: {e}")
+            _LOGGER.error(f"Error receiving message: {e}", exc_info=True)
         return None
 
     async def close(self) -> None:
@@ -169,8 +184,9 @@ class SwidgetWebsocket:
             )
 
         self.retry_count += 1
-        # Implement exponential backoff for reconnection delay
-        delay = self.retry_interval * (2 ** (self.retry_count - 1))
+        # Exponential backoff capped at 60s so a long outage doesn't push
+        # the next attempt out by hours.
+        delay = min(self.retry_interval * (2 ** (self.retry_count - 1)), 60)
         _LOGGER.warning(
             f"Reconnecting to Swidget device: {self.host} in {delay} seconds (attempt {self.retry_count})..."
         )
