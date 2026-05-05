@@ -22,29 +22,86 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class DeviceType(Enum):
-    """Device type enum."""
+    """Device type enum.
+
+    Values mirror the host ``type`` strings documented in
+    ``swidget-sdk/docs/summary_description.md``. Add new entries here
+    when firmware introduces a new host type rather than letting it
+    silently resolve to ``Unknown``.
+    """
 
     Dimmer = "dimmer"
+    MultiDimmer = "multi_dimmer"
     Outlet = "outlet"
+    Outlet20A = "outlet_20a"
     Switch = "switch"
     TimerSwitch = "pana_switch"
     RelaySwitch = "relay_switch"
+    PesnaFV05 = "pesna_fv05"
+    PesnaFV15 = "pesna_fv15"
+    PesnaFV20 = "pesna_fv20"
+    PesnaIB150 = "pesna_IB150"
+    PesnaIB160 = "pesna_IB160"
+    PesnaFV05G5 = "pesna_fv05_G5"
+    PesnaFV05WrongSlot = "pesna_fv05_wrong_slot"
+    PesnaUnrecognized = "pesna_unrecognized"
+    PesnaError = "pesna_error"
+    Alarm = "alarm"
+    XE300 = "xe300"
+    MalmosetBarrel = "malmoset_barrel"
+    Invalid = "invalid"
     Unknown = -1
+
+    @classmethod
+    def _missing_(cls, value: object) -> "DeviceType":
+        """Map unknown values to ``Unknown`` instead of raising ValueError.
+
+        Lets the SDK report "Unknown device type: ..." with a usable
+        message rather than crashing on a future firmware variant.
+        """
+        return cls.Unknown
 
 
 class InsertType(Enum):
-    """Insert type enum."""
+    """Insert type enum.
 
+    Values mirror the insert ``type`` strings documented in
+    ``swidget-sdk/docs/summary_description.md``. Add new entries here
+    when firmware introduces a new insert type rather than letting it
+    silently resolve to ``Unknown``.
+    """
+
+    CONTROL = "control"
     USB = "USB"
-    THM = "TEMP HUMI MOTION"
-    TH = "TEMP HUMI"
-    AQ = "AIR QUALITY"
+    USB_C = "USB C"
     GL = "GUIDE LIGHT"
+    ADV_GUIDE = "ADV GUIDE"
     PO = "POWER OUT"
-    VIDEO = "video"  # This is not a mistake.
-    USBC = "USBC"
+    MOTION = "MOTION"
+    AQ = "AIR QUALITY"
+    TH = "TEMP HUMI"
+    THM = "TEMP HUMI MOTION"
+    ENVIRONMENTAL = "ENVIRONMENTAL"
+    SECURITY = "SECURITY"
+    CO2 = "CO2"
+    PM = "PM"
+    PM_CO2 = "PM CO2"
     WD = "WATER DETECTOR"
+    LIGHT_SENSOR = "LIGHT SENSOR"
+    DISTANCE = "DISTANCE"
+    DIRECT_LIGHTS = "DIRECT LIGHTS"
+    DUAL_LV_RELAY = "DUAL LV RELAY"
+    SINGLE_LV_RELAY = "SINGLE LV RELAY"
+    SAS = "SAS"
+    SPEAKER = "SPEAKER"
+    VIDEO = "video"  # This is not a mistake.
+    INVALID = "invalid"
     Unknown = -1
+
+    @classmethod
+    def _missing_(cls, value: object) -> "InsertType":
+        """Map unknown values to ``Unknown`` instead of raising ValueError."""
+        return cls.Unknown
 
 
 class SelfDiagnosticErrorCodes(Enum):
@@ -234,7 +291,9 @@ class SwidgetDevice:
             raise ValueError(f"Unsupported HTTP method: {http_method}")
 
         url = f"{self.uri_scheme}://{self.ip_address}/api/v1/{endpoint}"
-        _LOGGER.debug(f"Sending {http_method} request to: {url}")
+        _LOGGER.debug(
+            f"HTTP {http_method} {url} params={params} body={json_payload}"
+        )
 
         try:
             async with self._session.request(
@@ -246,14 +305,22 @@ class SwidgetDevice:
             ) as response:
                 if response.status == 200:
                     if response.content_length == 0:
+                        _LOGGER.debug(
+                            f"HTTP {response.status} {url} (empty body)"
+                        )
                         return {}
-                    return await response.json()
+                    body = await response.json()
+                    _LOGGER.debug(f"HTTP {response.status} {url} body={body}")
+                    return body
                 elif response.status == 403:
                     _LOGGER.error(
                         f"Authentication failed for {http_method} '{endpoint}'"
                     )
                     raise SwidgetAuthenticationException
                 else:
+                    _LOGGER.debug(
+                        f"HTTP {response.status} {url} (non-success)"
+                    )
                     response.raise_for_status()
                 return {}
         except ClientConnectorError as e:
@@ -314,6 +381,18 @@ class SwidgetDevice:
         self.device_config = DeviceConfiguration(config)
         self._last_update = int(time.time())
 
+    async def set_device_config(self, updates: Dict[str, Any]) -> None:
+        """POST a partial device_config update.
+
+        The firmware accepts a sparse dict mirroring the full config tree
+        (only the changed leaves), so callers should pass the same nested
+        shape ``get_device_config()`` returns. After the POST succeeds the
+        local cache is refreshed so reads see the new value immediately.
+        """
+        _LOGGER.debug("SwidgetDevice.set_device_config(%s) called", updates)
+        await self.make_http_request("POST", "device_config", json_payload=updates)
+        await self.get_device_config()
+
     async def get_summary(self) -> None:
         """Get a summary of the device over HTTP."""
         _LOGGER.debug("SwidgetDevice.get_summary() called")
@@ -336,10 +415,30 @@ class SwidgetDevice:
         self.model = summary["model"]
         self.mac_address = summary["mac"]
         self.version = summary["version"]
-        self.assemblies = {
+        new_assemblies = {
             "host": SwidgetAssembly(summary["host"]),
             "insert": SwidgetAssembly(summary["insert"]),
         }
+        # Carry already-populated function state forward. Rebuilding
+        # assemblies wholesale resets every component's ``functions`` to
+        # ``None`` placeholders until the next ``state`` message lands —
+        # subscribers that read state in between (e.g. an HA coordinator
+        # firing on the summary callback) would briefly see "unknown"
+        # and flicker the UI.
+        for assembly_key, new_assembly in new_assemblies.items():
+            old_assembly = self.assemblies.get(assembly_key)
+            if old_assembly is None:
+                continue
+            for component_id, new_component in new_assembly.components.items():
+                old_component = old_assembly.components.get(component_id)
+                if old_component is None:
+                    continue
+                for fn_name in new_component.functions:
+                    if fn_name in old_component.functions:
+                        new_component.functions[fn_name] = old_component.functions[
+                            fn_name
+                        ]
+        self.assemblies = new_assemblies
         self.device_type = DeviceType(self.assemblies["host"].type)
         self.insert_type = InsertType(self.assemblies["insert"].type)
         self.id = self.assemblies["host"].id
@@ -388,8 +487,15 @@ class SwidgetDevice:
             for id, component in self.assemblies[assembly].components.items():
                 try:
                     component.functions.update(state[assembly]["components"][id])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    # Don't fail the whole state-process loop on one bad
+                    # component, but DO surface what was skipped — silent
+                    # failures here are how is_on ends up reading from a
+                    # never-populated None placeholder.
+                    _LOGGER.debug(
+                        f"process_state: skipped {assembly}/{id} "
+                        f"({type(exc).__name__}: {exc})"
+                    )
         self._last_update = int(time.time())
 
     async def update(self) -> None:
@@ -707,8 +813,8 @@ class SwidgetDevice:
 
     @property
     def is_outlet(self) -> bool:
-        """Return True if the device is an outlet."""
-        return self.device_type == DeviceType.Outlet
+        """Return True if the device is an outlet (any variant)."""
+        return self.device_type in (DeviceType.Outlet, DeviceType.Outlet20A)
 
     @property
     def is_switch(self) -> bool:
@@ -794,6 +900,49 @@ class SwidgetDevice:
         if usb_state == "on":
             return True
         return False
+
+    @property
+    def rtsp_enabled(self) -> Optional[bool]:
+        """Return whether the video insert's RTSP server is enabled.
+
+        Returns None when the config hasn't been fetched yet or the path
+        isn't present (non-video insert, or older firmware that omits the
+        key). Callers should treat None as "unknown" rather than False.
+        """
+        try:
+            return bool(
+                self.device_config.config["insert"]["components"]["video"]["rtsp"][
+                    "enable"
+                ]
+            )
+        except (KeyError, TypeError):
+            return None
+
+    async def set_rtsp_enabled(self, enabled: bool) -> None:
+        """Enable or disable the video insert's RTSP server."""
+        await self.set_device_config(
+            {"insert": {"components": {"video": {"rtsp": {"enable": bool(enabled)}}}}}
+        )
+
+    @property
+    def rtsp_stream_source(self) -> Optional[str]:
+        """Return the device's RTSP URL, or None when unavailable.
+
+        Path ``/ph264`` is fixed by firmware; the port comes from device
+        config. None if RTSP is disabled, the insert isn't video, or the
+        config hasn't been loaded yet.
+        """
+        if self.rtsp_enabled is not True:
+            return None
+        try:
+            port = int(
+                self.device_config.config["insert"]["components"]["video"]["rtsp"][
+                    "port"
+                ]
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+        return f"rtsp://{self.ip_address}:{port}/ph264"
 
     async def __aenter__(self) -> "SwidgetDevice":
         """Initialize and connect the Swidget Websocket client."""

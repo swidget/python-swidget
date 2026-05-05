@@ -6,6 +6,7 @@ from typing import Any, Type
 from urllib.parse import urlparse
 
 import ssdp
+from aiohttp import ClientError, ClientSession, ClientTimeout, TCPConnector
 
 from swidget.swidgetdevice import DeviceType, SwidgetDevice
 
@@ -16,9 +17,50 @@ from .swidgetswitch import SwidgetSwitch
 from .swidgettimerswitch import SwidgetTimerSwitch
 
 RESPONSE_SEC = 5
-SWIDGET_ST = "urn:swidget:pico:1"
+SWIDGET_STS = ("urn:swidget:pico:1", "urn:swidget:video:1")
+# Generous timeout: TLS handshakes on the device's MCU can take several
+# seconds on first connection.
+DETECT_TIMEOUT_SEC = 10
 _LOGGER = logging.getLogger(__name__)
 devices = dict()
+
+
+async def detect_secure(host: str, timeout: float = DETECT_TIMEOUT_SEC) -> bool:
+    """Determine whether a Swidget device requires HTTPS+auth.
+
+    Probes ``/api/v1/summary`` over HTTPS first (no credentials). A 403
+    response means the firmware enforces auth — the device is in secure
+    mode. If HTTPS is unreachable, falls back to HTTP; a 200 there means
+    the device is in plaintext mode.
+
+    :param host: Hostname or IP of the device.
+    :param timeout: Per-request timeout in seconds. Defaults are generous
+        because the device performs TLS termination on a low-power MCU
+        and the first handshake can be several seconds.
+    :return: True if the device requires HTTPS+auth, False if plaintext.
+    :raises SwidgetException: If neither protocol returns a usable response.
+    """
+    timeout_obj = ClientTimeout(total=timeout)
+    connector = TCPConnector(ssl=False, force_close=True)
+    async with ClientSession(connector=connector, timeout=timeout_obj) as session:
+        # Try plaintext first: it's the cheap path (no TLS handshake on the
+        # MCU) and a 200 response unambiguously means plaintext mode.
+        try:
+            async with session.get(f"http://{host}/api/v1/summary") as resp:
+                if resp.status == 200:
+                    return False
+        except (ClientError, asyncio.TimeoutError):
+            pass
+
+        # Fall back to HTTPS. A 403 means the firmware is enforcing auth.
+        try:
+            async with session.get(f"https://{host}/api/v1/summary") as resp:
+                if resp.status == 403:
+                    return True
+        except (ClientError, asyncio.TimeoutError):
+            pass
+
+    raise SwidgetException(f"Could not reach Swidget device at {host}")
 
 
 class SwidgetDiscoveredDevice:
@@ -49,7 +91,7 @@ class SwidgetProtocol(ssdp.SimpleServiceDiscoveryProtocol):
         headers = {h[0]: h[1] for h in response.headers}
         mac_address = headers["USN"].split("-")[-1]
         ip_address = urlparse(headers["LOCATION"]).hostname
-        if headers["ST"] == SWIDGET_ST:
+        if headers["ST"] in SWIDGET_STS:
             device_type = headers["SERVER"].split(" ")[1].split("+")[0]
             insert_type = headers["SERVER"].split(" ")[1].split("+")[1].split("/")[0]
             friendly_name = headers["SERVER"].split("/")[2].strip('"')
@@ -74,17 +116,19 @@ async def discover_devices(timeout=RESPONSE_SEC):
         SwidgetProtocol, family=socket.AF_INET
     )
 
-    # Send out an M-SEARCH request, requesting Swidget service types.
-    search_request = ssdp.SSDPRequest(
-        "M-SEARCH",
-        headers={
-            "HOST": "239.255.255.250:1900",
-            "MAN": '"ssdp:discover"',
-            "MX": timeout,
-            "ST": SWIDGET_ST,
-        },
-    )
-    search_request.sendto(transport, (SwidgetProtocol.MULTICAST_ADDRESS, 1900))
+    # SSDP M-SEARCH matches one ST per request, so emit one packet per
+    # supported service type. Devices reply only to their matching ST.
+    for st in SWIDGET_STS:
+        search_request = ssdp.SSDPRequest(
+            "M-SEARCH",
+            headers={
+                "HOST": "239.255.255.250:1900",
+                "MAN": '"ssdp:discover"',
+                "MX": timeout,
+                "ST": st,
+            },
+        )
+        search_request.sendto(transport, (SwidgetProtocol.MULTICAST_ADDRESS, 1900))
     await asyncio.sleep(timeout)
     return devices
 
@@ -117,7 +161,7 @@ async def discover_single(
 
 def _get_device_class(device_type: DeviceType) -> Type[SwidgetDevice]:
     """Find SmartDevice subclass for device described by passed data."""
-    if device_type == DeviceType.Outlet:
+    if device_type in (DeviceType.Outlet, DeviceType.Outlet20A):
         return SwidgetOutlet
     elif device_type == DeviceType.Switch:
         return SwidgetSwitch
