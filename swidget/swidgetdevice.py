@@ -249,6 +249,9 @@ class SwidgetDevice:
         ):
             _LOGGER.debug("Calling SwidgetDevice.process_state()")
             await self.process_state(message)
+        elif message["request_id"] == "device_config":
+            _LOGGER.debug("Calling SwidgetDevice.process_device_config()")
+            await self.process_device_config(message)
         else:
             message_type = ["request_id"]
             _LOGGER.error(
@@ -374,11 +377,33 @@ class SwidgetDevice:
             raise SwidgetConnectionException from e
 
     async def get_device_config(self) -> Any:
-        """Get the config of the device."""
+        """Refresh the local device_config cache.
+
+        Uses the websocket when available — the response lands on
+        ``message_callback`` with ``request_id == "device_config"`` and
+        ``process_device_config`` updates the cache. Falls back to HTTP
+        before the socket is connected (e.g. during entry pre-load).
+        """
         _LOGGER.debug("SwidgetDevice.get_device_config() called")
-        _LOGGER.debug("Sending get_summary() command over http")
+        if self.use_websockets and self.connected:
+            _LOGGER.debug("In websocket mode. Sending get_device_config over websocket")
+            await self._websocket.send_str(
+                json.dumps(
+                    {"type": "get_device_config", "request_id": "device_config"}
+                )
+            )
+            return
+        _LOGGER.debug("In http mode. Sending get_device_config over http")
         config = await self.make_http_request("GET", "device_config")
-        self.device_config = DeviceConfiguration(config)
+        await self.process_device_config(config)
+
+    async def process_device_config(self, config) -> None:
+        """Process a device_config payload from HTTP body or websocket message."""
+        _LOGGER.debug("SwidgetDevice.process_device_config() called")
+        # Strip transport metadata so DeviceConfiguration sees the same
+        # shape regardless of whether the payload arrived via HTTP or WS.
+        cfg = {k: v for k, v in config.items() if k != "request_id"}
+        self.device_config = DeviceConfiguration(cfg)
         self._last_update = int(time.time())
 
     async def set_device_config(self, updates: Dict[str, Any]) -> None:
@@ -499,7 +524,12 @@ class SwidgetDevice:
         self._last_update = int(time.time())
 
     async def update(self) -> None:
-        """Update the state, summary, config and name of the device."""
+        """Refresh state and summary; device_config is fetched separately.
+
+        device_config rarely changes, and a successful set_device_config
+        already pushes a fresh copy into the local cache, so we don't
+        re-fetch it on every coordinator poll.
+        """
         _LOGGER.debug("SwidgetDevice.update() called")
         if self._last_update == 0:
             _LOGGER.debug("Performing the initial update to obtain sysinfo")
@@ -507,8 +537,6 @@ class SwidgetDevice:
             await self.get_state()
             if self._friendly_name == "Unknown Swidget Device":
                 await self.get_friendly_name()
-            if not self.device_config.config_populated():
-                await self.get_device_config()
         elif (int(time.time()) - self._last_update) < 5:
             _LOGGER.debug("update() recently called, not executing")
         else:

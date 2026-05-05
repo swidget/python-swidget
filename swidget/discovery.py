@@ -18,6 +18,36 @@ from .swidgettimerswitch import SwidgetTimerSwitch
 
 RESPONSE_SEC = 5
 SWIDGET_STS = ("urn:swidget:pico:1", "urn:swidget:video:1")
+
+# Per-ST raw device-id length (in hex chars) before any UUID padding. The
+# firmware embeds the device id in the SSDP USN differently per family:
+# pico uses a fixed UUID prefix + the 12-char id as the last segment;
+# video pads the 24-char id with zeros to fit a 32-char UUID. Both can
+# be recovered as long as we know the original length per ST.
+_USN_DEVICE_ID_LENGTH = {
+    "urn:swidget:pico:1": 12,
+    "urn:swidget:video:1": 24,
+}
+
+
+def device_id_from_ssdp(usn: str, st: str) -> Optional[str]:
+    """Extract the canonical device id from an SSDP USN/ST pair.
+
+    Returns None when the inputs aren't recognized — callers should treat
+    that as "skip this discovery" rather than synthesizing an id.
+    """
+    if not usn or not usn.startswith("uuid:") or st not in _USN_DEVICE_ID_LENGTH:
+        return None
+    uuid_part = usn[len("uuid:") :]
+    expected_len = _USN_DEVICE_ID_LENGTH[st]
+    if st == "urn:swidget:pico:1":
+        # Last hyphenated segment carries the real 12-char MAC.
+        last = uuid_part.rsplit("-", 1)[-1]
+        return last if len(last) == expected_len else None
+    # Video (and any future variant that pads): dehyphenate, take the
+    # leading expected_len chars, ignore the trailing zero padding.
+    flat = uuid_part.replace("-", "")
+    return flat[:expected_len] if len(flat) >= expected_len else None
 # Generous timeout: TLS handshakes on the device's MCU can take several
 # seconds on first connection.
 DETECT_TIMEOUT_SEC = 10
@@ -89,22 +119,27 @@ class SwidgetProtocol(ssdp.SimpleServiceDiscoveryProtocol):
     def response_received(self, response: ssdp.SSDPResponse, addr: tuple):
         """Handle an incoming response."""
         headers = {h[0]: h[1] for h in response.headers}
-        mac_address = headers["USN"].split("-")[-1]
+        st = headers.get("ST", "")
+        if st not in SWIDGET_STS:
+            return
+        device_id = device_id_from_ssdp(headers.get("USN", ""), st)
+        if not device_id:
+            _LOGGER.debug("Skipping SSDP response with unparseable USN: %s", headers)
+            return
         ip_address = urlparse(headers["LOCATION"]).hostname
-        if headers["ST"] in SWIDGET_STS:
-            device_type = headers["SERVER"].split(" ")[1].split("+")[0]
-            insert_type = headers["SERVER"].split(" ")[1].split("+")[1].split("/")[0]
-            friendly_name = headers["SERVER"].split("/")[2].strip('"')
-            devices[mac_address] = SwidgetDiscoveredDevice(
-                mac=mac_address,
-                host=ip_address,
-                friendly_name=friendly_name,
-                host_type=device_type,
-                insert_type=insert_type,
-            )
-            _LOGGER.debug(
-                f"Discovered Swidget device via SSDP: '{friendly_name}' at {ip_address} Type:{device_type}/{insert_type}"
-            )
+        device_type = headers["SERVER"].split(" ")[1].split("+")[0]
+        insert_type = headers["SERVER"].split(" ")[1].split("+")[1].split("/")[0]
+        friendly_name = headers["SERVER"].split("/")[2].strip('"')
+        devices[device_id] = SwidgetDiscoveredDevice(
+            mac=device_id,
+            host=ip_address,
+            friendly_name=friendly_name,
+            host_type=device_type,
+            insert_type=insert_type,
+        )
+        _LOGGER.debug(
+            f"Discovered Swidget device via SSDP: '{friendly_name}' at {ip_address} Type:{device_type}/{insert_type}"
+        )
 
 
 async def discover_devices(timeout=RESPONSE_SEC):
