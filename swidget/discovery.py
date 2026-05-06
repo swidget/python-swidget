@@ -12,6 +12,7 @@ from swidget.swidgetdevice import DeviceType, SwidgetDevice
 
 from .exceptions import SwidgetException
 from .swidgetdimmer import SwidgetDimmer
+from .swidgetfan import SwidgetFan
 from .swidgetoutlet import SwidgetOutlet
 from .swidgetswitch import SwidgetSwitch
 from .swidgettimerswitch import SwidgetTimerSwitch
@@ -194,6 +195,21 @@ async def discover_single(
     return dev
 
 
+_PESNA_DEVICE_TYPES = frozenset(
+    {
+        DeviceType.PesnaFV05,
+        DeviceType.PesnaFV15,
+        DeviceType.PesnaFV20,
+        DeviceType.PesnaIB150,
+        DeviceType.PesnaIB160,
+        DeviceType.PesnaFV05G5,
+        DeviceType.PesnaFV05WrongSlot,
+        DeviceType.PesnaUnrecognized,
+        DeviceType.PesnaError,
+    }
+)
+
+
 def _get_device_class(device_type: DeviceType) -> Type[SwidgetDevice]:
     """Find SmartDevice subclass for device described by passed data."""
     if device_type in (DeviceType.Outlet, DeviceType.Outlet20A):
@@ -206,4 +222,9 @@ def _get_device_class(device_type: DeviceType) -> Type[SwidgetDevice]:
         return SwidgetTimerSwitch
     elif device_type == DeviceType.RelaySwitch:
         return SwidgetSwitch
+    elif device_type in _PESNA_DEVICE_TYPES:
+        # All Pesna* hosts share the same request surface. Per-variant
+        # differences (max CFM, mode set, available modules) are
+        # surfaced by the device itself in the summary/datapoint.
+        return SwidgetFan
     raise SwidgetException("Unknown device type: %s" % device_type)

@@ -11,6 +11,7 @@ import asyncclick as click
 from swidget import (
     SwidgetDevice,
     SwidgetDimmer,
+    SwidgetFan,
     SwidgetOutlet,
     SwidgetSwitch,
     SwidgetTimerSwitch,
@@ -24,6 +25,12 @@ TYPE_TO_CLASS = {
     "switch": SwidgetSwitch,
     "outlet": SwidgetOutlet,
     "pana_switch": SwidgetTimerSwitch,
+    "pesna_fv05": SwidgetFan,
+    "pesna_fv15": SwidgetFan,
+    "pesna_fv20": SwidgetFan,
+    "pesna_IB150": SwidgetFan,
+    "pesna_IB160": SwidgetFan,
+    "pesna_fv05_G5": SwidgetFan,
 }
 
 

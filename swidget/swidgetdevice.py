@@ -995,17 +995,26 @@ class SwidgetAssembly:
     def __init__(self, summary: dict):
         self.type = summary["type"]
         self.components = {
-            c["id"]: SwidgetComponent(c["functions"]) for c in summary["components"]
+            c["id"]: SwidgetComponent(c) for c in summary["components"]
         }
         self.id = summary.get("id")
         self.error = summary.get("error")
 
 
 class SwidgetComponent:
-    """Component-level representation of a Swidget Assembly."""
+    """Component-level representation of a Swidget Assembly.
 
-    def __init__(self, functions):
-        self.functions = {f: None for f in functions}
+    Carries the function-state map plus the optional summary-level
+    fields fan hosts emit alongside ``functions`` (``maxCFM``, ``code``,
+    ``modules``). Non-fan components don't populate them and they stay
+    at their defaults.
+    """
+
+    def __init__(self, component):
+        self.functions = {f: None for f in component.get("functions", [])}
+        self.max_cfm = component.get("maxCFM")
+        self.model_code = component.get("code")
+        self.modules = list(component.get("modules", []))
 
 
 class DeviceConfiguration:

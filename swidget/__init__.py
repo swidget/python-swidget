@@ -30,6 +30,7 @@ from swidget.swidgetdevice import (
     SwidgetDevice,
 )
 from swidget.swidgetdimmer import SwidgetDimmer
+from swidget.swidgetfan import SwidgetFan
 from swidget.swidgetoutlet import SwidgetOutlet
 from swidget.swidgetswitch import SwidgetSwitch
 from swidget.swidgettimerswitch import SwidgetTimerSwitch
@@ -50,6 +51,7 @@ __all__ = [
     "SwidgetDevice",
     "SwidgetComponent",
     "SwidgetDimmer",
+    "SwidgetFan",
     "SwidgetOutlet",
     "SwidgetSwitch",
     "SwidgetTimerSwitch",

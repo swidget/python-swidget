@@ -8,6 +8,7 @@ from swidget.discovery import _get_device_class, discover_devices, discover_sing
 from swidget.exceptions import SwidgetException
 from swidget.swidgetdevice import DeviceType
 from swidget.swidgetdimmer import SwidgetDimmer
+from swidget.swidgetfan import SwidgetFan
 from swidget.swidgetoutlet import SwidgetOutlet
 from swidget.swidgetswitch import SwidgetSwitch
 from swidget.swidgettimerswitch import SwidgetTimerSwitch
@@ -56,6 +57,18 @@ def test_get_device_class():
     assert _get_device_class(DeviceType.Dimmer) == SwidgetDimmer
     assert _get_device_class(DeviceType.TimerSwitch) == SwidgetTimerSwitch
     assert _get_device_class(DeviceType.RelaySwitch) == SwidgetSwitch
+    for fan_type in (
+        DeviceType.PesnaFV05,
+        DeviceType.PesnaFV15,
+        DeviceType.PesnaFV20,
+        DeviceType.PesnaIB150,
+        DeviceType.PesnaIB160,
+        DeviceType.PesnaFV05G5,
+        DeviceType.PesnaFV05WrongSlot,
+        DeviceType.PesnaUnrecognized,
+        DeviceType.PesnaError,
+    ):
+        assert _get_device_class(fan_type) == SwidgetFan
     with pytest.raises(SwidgetException):
         _get_device_class("UnknownDeviceType")
 
