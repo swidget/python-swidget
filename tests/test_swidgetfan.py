@@ -197,3 +197,30 @@ async def test_clean_filter_sends_command(fan):
     fan.send_command.assert_awaited_once_with(
         assembly="host", component="0", function="filter", command={"clean": True}
     )
+
+
+@pytest.mark.asyncio
+async def test_summary_functions_are_stable_against_state_leaks(fan):
+    """Regression: process_state side-effects must not change the schema.
+
+    Firmware emits state keys (e.g. ``modules`` on FV05) that aren't
+    declared in the summary's ``functions`` array. ``process_state``
+    merges those into ``functions`` for runtime convenience, which
+    means ``functions.keys()`` flaps as state arrives. Anything that
+    needs a stable schema fingerprint reads ``summary_functions``
+    instead — assert that contract here.
+    """
+    component = fan.assemblies["host"].components["0"]
+    declared = component.summary_functions
+    assert "modules" not in declared
+
+    component.functions.update(
+        {
+            "modules": {"condensation": "dormant"},
+            "exhaust": {"cfm": 80, "allowed": [50, 80, 110]},
+        }
+    )
+    # functions is now polluted with the state-only ``modules`` key,
+    # but summary_functions is unchanged.
+    assert "modules" in component.functions
+    assert component.summary_functions == declared
