@@ -60,6 +60,7 @@ def test_get_device_class():
     for fan_type in (
         DeviceType.PesnaFV05,
         DeviceType.PesnaFV15,
+        DeviceType.PesnaFV15Plus,
         DeviceType.PesnaFV20,
         DeviceType.PesnaIB150,
         DeviceType.PesnaIB160,

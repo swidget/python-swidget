@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import socket
-from typing import Any, Type
+from typing import Any, Optional, Type
 from urllib.parse import urlparse
 
 import ssdp
@@ -59,10 +59,19 @@ devices = dict()
 async def detect_secure(host: str, timeout: float = DETECT_TIMEOUT_SEC) -> bool:
     """Determine whether a Swidget device requires HTTPS+auth.
 
-    Probes ``/api/v1/summary`` over HTTPS first (no credentials). A 403
-    response means the firmware enforces auth — the device is in secure
-    mode. If HTTPS is unreachable, falls back to HTTP; a 200 there means
-    the device is in plaintext mode.
+    Probes ``/api/v1/summary`` over HTTP first; a 200 means the device
+    is in plaintext mode. Secure-mode firmware running on the same port
+    answers 403 ("TLS required") instead, so anything non-200 falls
+    through to the HTTPS probe.
+
+    On HTTPS, both 401 and 403 indicate secure mode:
+    - **401 "Authorization Missing"** — no token in the request (our
+      probe doesn't carry one).
+    - **403 "Forbidden"** — token rejected ("Incorrect Token") or the
+      device's secret key has never been provisioned ("Key not set").
+
+    Both states mean "secure mode is enforced, prompt the caller for
+    credentials", so we collapse them into a single True return.
 
     :param host: Hostname or IP of the device.
     :param timeout: Per-request timeout in seconds. Defaults are generous
@@ -83,10 +92,12 @@ async def detect_secure(host: str, timeout: float = DETECT_TIMEOUT_SEC) -> bool:
         except (ClientError, asyncio.TimeoutError):
             pass
 
-        # Fall back to HTTPS. A 403 means the firmware is enforcing auth.
+        # Fall back to HTTPS. 401 ("Authorization Missing") and 403
+        # ("Forbidden" — wrong token, or key not set) both mean the
+        # firmware is in secure mode; the caller now needs credentials.
         try:
             async with session.get(f"https://{host}/api/v1/summary") as resp:
-                if resp.status == 403:
+                if resp.status in (401, 403):
                     return True
         except (ClientError, asyncio.TimeoutError):
             pass
@@ -199,6 +210,7 @@ _PESNA_DEVICE_TYPES = frozenset(
     {
         DeviceType.PesnaFV05,
         DeviceType.PesnaFV15,
+        DeviceType.PesnaFV15Plus,
         DeviceType.PesnaFV20,
         DeviceType.PesnaIB150,
         DeviceType.PesnaIB160,

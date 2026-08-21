@@ -27,6 +27,7 @@ TYPE_TO_CLASS = {
     "pana_switch": SwidgetTimerSwitch,
     "pesna_fv05": SwidgetFan,
     "pesna_fv15": SwidgetFan,
+    "pesna_fv15_plus": SwidgetFan,
     "pesna_fv20": SwidgetFan,
     "pesna_IB150": SwidgetFan,
     "pesna_IB160": SwidgetFan,

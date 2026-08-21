@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from enum import Enum
 from types import TracebackType
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from aiohttp import ClientSession, TCPConnector
 from aiohttp.client_exceptions import ClientConnectorError
@@ -39,6 +39,7 @@ class DeviceType(Enum):
     RelaySwitch = "relay_switch"
     PesnaFV05 = "pesna_fv05"
     PesnaFV15 = "pesna_fv15"
+    PesnaFV15Plus = "pesna_fv15_plus"
     PesnaFV20 = "pesna_fv20"
     PesnaIB150 = "pesna_IB150"
     PesnaIB160 = "pesna_IB160"
@@ -122,6 +123,24 @@ class SelfDiagnosticErrorCodes(Enum):
     HUMI = 12
     CO2 = 13
     PART_MATTER = 14
+
+
+def _deep_merge_dicts(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a new dict with ``updates`` deep-merged onto ``base``.
+
+    Used by ``process_device_config`` so that partial-update websocket
+    pushes don't wipe untouched top-level keys out of the cache. Lists
+    and scalars are replaced (not concatenated) — this is a config tree,
+    not an event log.
+    """
+    result: Dict[str, Any] = dict(base)
+    for key, value in updates.items():
+        existing = result.get(key)
+        if isinstance(value, dict) and isinstance(existing, dict):
+            result[key] = _deep_merge_dicts(existing, value)
+        else:
+            result[key] = value
+    return result
 
 
 class SwidgetDevice:
@@ -398,12 +417,31 @@ class SwidgetDevice:
         await self.process_device_config(config)
 
     async def process_device_config(self, config) -> None:
-        """Process a device_config payload from HTTP body or websocket message."""
+        """Process a device_config payload from HTTP body or websocket message.
+
+        Both transports use the same callback path, but the firmware
+        pushes a *partial* websocket message after every config write
+        (only the changed leaves) using the same request_id as the full
+        GET response. Replacing the cache wholesale would let those
+        partial pushes silently wipe every other top-level key, which
+        in turn breaks every other config-driven entity in the consumer.
+
+        Deep-merging the incoming dict into the existing cache gives the
+        right behaviour for both shapes: a full GET overwrites every
+        leaf (functionally a replace), and a partial push updates only
+        what it touches.
+        """
         _LOGGER.debug("SwidgetDevice.process_device_config() called")
         # Strip transport metadata so DeviceConfiguration sees the same
         # shape regardless of whether the payload arrived via HTTP or WS.
         cfg = {k: v for k, v in config.items() if k != "request_id"}
-        self.device_config = DeviceConfiguration(cfg)
+        existing = (
+            self.device_config.config
+            if self.device_config is not None and self.device_config.config_populated()
+            else {}
+        )
+        merged = _deep_merge_dicts(existing, cfg)
+        self.device_config = DeviceConfiguration(merged)
         self._last_update = int(time.time())
 
     async def set_device_config(self, updates: Dict[str, Any]) -> None:
@@ -413,10 +451,22 @@ class SwidgetDevice:
         (only the changed leaves), so callers should pass the same nested
         shape ``get_device_config()`` returns. After the POST succeeds the
         local cache is refreshed so reads see the new value immediately.
+
+        We refresh via HTTP rather than ``get_device_config()`` because
+        the websocket variant is fire-and-forget — it sends a request and
+        returns before the response is delivered to ``message_callback``.
+        Worse, the firmware also pushes a websocket message of the
+        *changed leaves only* on every config write, and
+        ``process_device_config`` replaces the cache wholesale rather
+        than merging — so a partial push arriving after a full GET would
+        silently wipe everything else out of the cache. The synchronous
+        HTTP read here guarantees the cache is the full config when we
+        return.
         """
         _LOGGER.debug("SwidgetDevice.set_device_config(%s) called", updates)
         await self.make_http_request("POST", "device_config", json_payload=updates)
-        await self.get_device_config()
+        config = await self.make_http_request("GET", "device_config")
+        await self.process_device_config(config)
 
     async def get_summary(self) -> None:
         """Get a summary of the device over HTTP."""
@@ -561,9 +611,14 @@ class SwidgetDevice:
             )
 
     async def send_command(
-        self, assembly: str, component: str, function: str, command: dict
+        self, assembly: str, component: str, function: str, command: Union[dict, str]
     ) -> None:
-        """Send a command to the Swidget device either using a HTTP call or the existing websocket."""
+        """Send a command to the Swidget device either using a HTTP call or the existing websocket.
+
+        ``command`` is placed verbatim under the function key. Most
+        functions take an object, but a few (the Pesna fan ``mode`` and
+        ``speed``) expect a bare string value.
+        """
         _LOGGER.debug("SwidgetDevice.send_command() called")
         data = {assembly: {"components": {component: {function: command}}}}
         _LOGGER.debug(f"Command to send: {data}")
