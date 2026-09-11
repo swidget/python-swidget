@@ -502,7 +502,11 @@ class SwidgetDevice:
         # and flicker the UI.
         for assembly_key, new_assembly in new_assemblies.items():
             old_assembly = self.assemblies.get(assembly_key)
-            if old_assembly is None:
+            if (
+                old_assembly is None
+                or old_assembly.type != new_assembly.type
+                or old_assembly.id != new_assembly.id
+            ):
                 continue
             for component_id, new_component in new_assembly.components.items():
                 old_component = old_assembly.components.get(component_id)
@@ -513,6 +517,17 @@ class SwidgetDevice:
                         new_component.functions[fn_name] = old_component.functions[
                             fn_name
                         ]
+                # Fan module readings live in state["modules"], but
+                # "modules" is not a summary function tag. Preserve
+                # readings only for modules the new summary still lists;
+                # removed modules must not retain stale sensor state.
+                module_state = old_component.functions.get("modules")
+                if new_component.modules and isinstance(module_state, dict):
+                    new_component.functions["modules"] = {
+                        name: module_state[name]
+                        for name in new_component.modules
+                        if name in module_state
+                    }
         self.assemblies = new_assemblies
         self.device_type = DeviceType(self.assemblies["host"].type)
         self.insert_type = InsertType(self.assemblies["insert"].type)
@@ -1064,11 +1079,11 @@ class SwidgetComponent:
     starts as a same-keyed dict of placeholder ``None`` values and is
     later mutated by ``process_state`` to carry live datapoint values.
 
-    Process_state also leaks in keys that aren't in the summary
+    Process_state also adds keys that aren't in the summary
     functions list (e.g. fans emit a ``modules`` map in state that
     isn't a declared function tag), so ``functions.keys()`` is *not*
-    schema-stable across summary refreshes. Anything that needs a
-    stable schema fingerprint (entity wiring, structure-change
+    the declared schema. Anything that needs a stable schema
+    fingerprint (entity wiring, structure-change
     detection) must read ``summary_functions``, not ``functions``.
 
     ``max_cfm``, ``model_code`` and ``modules`` come from the optional
@@ -1079,7 +1094,7 @@ class SwidgetComponent:
     def __init__(self, component):
         funcs = list(component.get("functions", []))
         self.summary_functions: tuple[str, ...] = tuple(funcs)
-        self.functions = {f: None for f in funcs}
+        self.functions: dict[str, Any] = {f: None for f in funcs}
         self.max_cfm = component.get("maxCFM")
         self.model_code = component.get("code")
         self.modules = list(component.get("modules", []))
